@@ -1,0 +1,22 @@
+{
+  "placeholderImages": [
+    {
+      "id": "hero-bg",
+      "description": "Secure financial growth and transfers",
+      "imageUrl": "https://picsum.photos/seed/remit-hero/1200/600",
+      "imageHint": "finance security"
+    },
+    {
+      "id": "agent-portal",
+      "description": "Professional agent workstation",
+      "imageUrl": "https://picsum.photos/seed/agent-portal/800/400",
+      "imageHint": "office workstation"
+    },
+    {
+      "id": "user-avatar-1",
+      "description": "Default customer profile picture",
+      "imageUrl": "https://picsum.photos/seed/user-1/100/100",
+      "imageHint": "portrait person"
+    }
+  ]
+}

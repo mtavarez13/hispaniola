@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "agent", "customer"] },
+        "country": { "type": "string" },
+        "walletBalance": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "settings": {
+      "title": "System Settings",
+      "description": "Exchange rates and agent commission configurations set by administrators",
+      "type": "object",
+      "properties": {
+        "publicRateDOP": { "type": "number" },
+        "publicRateHTG": { "type": "number" },
+        "agentRateDOP": { "type": "number" },
+        "agentRateHTG": { "type": "number" },
+        "agentReceptionFeeUSD": { "type": "number" },
+        "agentPayoutPercentage": { "type": "number" },
+        "platformFeePercentage": { "type": "number" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      }
+    },
+    "qik_invoices": {
+      "title": "Qik Invoice",
+      "description": "Invoices processed from Qik confirmation emails or generated manually",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "noReferencia": { "type": "string" },
+        "servicio": { "type": "string" },
+        "telefono": { "type": "string" },
+        "montoServicio": { "type": "number" },
+        "cargoServicio": { "type": "number" },
+        "totalPagado": { "type": "number" },
+        "moneda": { "type": "string" },
+        "fechaHora": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "noReferencia", "totalPagado"]
+    },
+    "qik_pool": {
+      "title": "Master Qik Balance Pool",
+      "description": "Global master Qik bank balance and allocation status",
+      "type": "object",
+      "properties": {
+        "totalBalanceRD": { "type": "number" },
+        "allocatedBalanceRD": { "type": "number" },
+        "availableBalanceRD": { "type": "number" }
+      }
+    },
+    "qik_agents": {
+      "title": "Qik Agent Accounts",
+      "description": "Sub-agent accounts with assigned Qik balances",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "allocatedBalanceRD": { "type": "number" },
+        "currentBalanceRD": { "type": "number" },
+        "totalSpentRD": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": "settings",
+      "description": "System-wide rates and parameters configured by admins"
+    },
+    "/qik_invoices/{invoiceId}": {
+      "schema": "qik_invoices",
+      "description": "Receipts and invoices emitted in 80mm format"
+    },
+    "/qik_pool/{poolId}": {
+      "schema": "qik_pool",
+      "description": "Global master Qik account balance"
+    },
+    "/qik_agents/{agentId}": {
+      "schema": "qik_agents",
+      "description": "Sub-agents with Qik bill-payment balances"
+    }
+  }
+}

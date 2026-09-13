@@ -1,0 +1,10 @@
+{
+  "name": "HispaniolaPay",
+  "description": "Plataforma de remesas binacionales HispaniolaPay con mapa interactivo, envío desde bancos dominicanos a MonCash/Natcash en Haití, integración BenCash Group, lectura de depósitos bancarios de Banreservas, BHD y Banco Popular vía Gmail con tablero de confirmación 1-clic para administradores y notificaciones por WhatsApp.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
