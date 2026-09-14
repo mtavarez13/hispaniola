@@ -31,13 +31,13 @@ try {
         app,
         {
           ignoreUndefinedProperties: true,
-          experimentalForceLongPolling: true,
+          experimentalAutoDetectLongPolling: true,
         },
         targetDatabaseId
       )
     : initializeFirestore(app, {
         ignoreUndefinedProperties: true,
-        experimentalForceLongPolling: true,
+        experimentalAutoDetectLongPolling: true,
       });
 } catch (e) {
   try {

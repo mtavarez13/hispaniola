@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   Card, 
   CardContent, 
@@ -112,7 +112,7 @@ export function PartnerApiAdminTab() {
   const [codeLang, setCodeLang] = useState<"curl" | "node" | "python" | "php">("curl");
 
   // Cargar datos
-  const fetchPartners = async () => {
+  const fetchPartners = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/partner/admin");
@@ -121,8 +121,8 @@ export function PartnerApiAdminTab() {
         setPartners(data.partners || []);
         setStats(data.stats || {});
         setRecentTransfers(data.recentTransfers || []);
-        if (data.partners?.length > 0 && !selectedSandboxPartner) {
-          setSelectedSandboxPartner(data.partners[0]);
+        if (data.partners?.length > 0) {
+          setSelectedSandboxPartner(prev => prev || data.partners[0]);
         }
       }
     } catch (e) {
@@ -130,11 +130,11 @@ export function PartnerApiAdminTab() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPartners();
-  }, []);
+  }, [fetchPartners]);
 
   const handleCopy = (key: string) => {
     navigator.clipboard.writeText(key);
