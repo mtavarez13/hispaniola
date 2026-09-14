@@ -81,8 +81,8 @@ function ClientWalletContent() {
   // Balances
   const uid = user?.uid || userProfile?.uid || "guest_client";
   const [balances, setBalances] = useState<WalletBalances>({
-    walletBalance: 150.0,
-    savingsBalance: 50.0,
+    walletBalance: 0.0,
+    savingsBalance: 0.0,
     clientCode: userProfile?.clientCode || "CLI-8821",
     phone: userProfile?.phone || "+1 (829) 450-2211",
     idNumber: userProfile?.idNumber || "",
@@ -329,43 +329,32 @@ function ClientWalletContent() {
       bankName,
       bankReference: bankRef.trim(),
       targetPocket: bankTargetPocket,
-      status: "completed", // auto match for demonstration
+      status: "pending",
       voucherCode: `VOUCH-BNK-${Date.now().toString().slice(-5)}`,
       notes: `Transferencia reportada de ${bankName}. Comprobante: ${bankRef.trim()}`,
       createdAt: new Date().toISOString(),
-      confirmedAt: new Date().toISOString(),
-      confirmedBy: "Verificación Automática Gmail Banreservas/BHD/Popular",
     };
 
     saveClientDeposit(newBankDeposit);
-
-    // Credit wallet immediately
-    const updated = {
-      ...balances,
-      ...(bankTargetPocket === "savings" 
-        ? { savingsBalance: Math.round((balances.savingsBalance + credited) * 100) / 100 }
-        : { walletBalance: Math.round((balances.walletBalance + credited) * 100) / 100 }),
-    };
-    syncBalances(updated);
 
     addClientMovement({
       id: `MOV-${Date.now().toString().slice(-6)}`,
       clientId: uid,
       type: "deposit_bank",
       title: `Depósito Bancario ${bankName}`,
-      description: `Comprobante ${bankRef.trim()} acreditado: +$${credited.toFixed(2)} USD (RD$ ${bankAmountDOP.toLocaleString()})`,
+      description: `Comprobante ${bankRef.trim()} enviado: +$${credited.toFixed(2)} USD (RD$ ${bankAmountDOP.toLocaleString()})`,
       amountUSD: credited,
       direction: "in",
       targetPocket: bankTargetPocket,
       date: new Date().toISOString(),
       referenceId: newBankDeposit.id,
-      status: "completed",
+      status: "pending",
       receiptCode: newBankDeposit.voucherCode,
     });
 
     toast({
-      title: "¡Depósito Bancario Verificado y Acreditado!",
-      description: `Se han sumado +$${credited.toFixed(2)} USD a tu ${bankTargetPocket === "savings" ? "Bolsillo de Ahorro" : "Billetera Principal"}.`,
+      title: "Comprobante Registrado (Pendiente de Acreditación)",
+      description: `Tu comprobante de RD$ ${bankAmountDOP.toLocaleString()} ha sido recibido. El Administrador verificará la transferencia bancaria antes de acreditar los fondos a tu cuenta.`,
     });
 
     setBankRef("");

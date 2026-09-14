@@ -15,6 +15,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { 
@@ -44,7 +46,9 @@ import {
   Filter,
   Check,
   AlertTriangle,
-  Lock
+  Lock,
+  DollarSign,
+  Landmark
 } from "lucide-react";
 
 export default function SubAgentsPage() {
@@ -205,20 +209,88 @@ export default function SubAgentsPage() {
         description: `Se han guardado los cambios para ${subAgentData.name || selectedSubAgentForEdit.name}.`,
       });
     } else {
-      // Create new
+      // Create new: Por política de lanzamiento, todas las cuentas creadas inician en balance 0.
+      // Solo el Administrador tiene autorización para acreditar saldo operativo.
       const newId = `SA-${Math.floor(100 + Math.random() * 900)}`;
       const newRecord: SubAgent = {
         ...(subAgentData as SubAgent),
         id: newId,
+        walletBalance: 0,
+        creditLimit: 0,
         createdAt: new Date().toISOString(),
       };
       const updated = [newRecord, ...subAgents];
       updateListAndPersist(updated);
       toast({
-        title: "¡Sub-Agente Registrado!",
-        description: `Se creó exitosamente el perfil comercial con ID ${newId}.`,
+        title: "¡Sub-Agente Registrado (Balance 0.00)!",
+        description: `Se creó exitosamente el perfil con ID ${newId}. El Administrador debe fondear el balance operativo cuando corresponda.`,
       });
     }
+  };
+
+  // Dialog: Admin Acreditar Saldo Operativo a Sub-Agente
+  const [isCreditDialogOpen, setIsCreditDialogOpen] = useState(false);
+  const [subAgentToCredit, setSubAgentToCredit] = useState<SubAgent | null>(null);
+  const [creditAmount, setCreditAmount] = useState<number>(10000);
+  const [creditReason, setCreditReason] = useState<string>("Fondo de Operación Comercial (Aprobación Administrativa)");
+  const [creditNotes, setCreditNotes] = useState<string>("");
+  const [creditSubmitting, setCreditSubmitting] = useState(false);
+
+  const handleOpenCreditDialog = (sa: SubAgent) => {
+    if (!isAdmin) {
+      toast({
+        title: "Acceso Restringido",
+        description: "Solo los Administradores tienen autorización para acreditar balance a sub-agentes.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSubAgentToCredit(sa);
+    setCreditAmount(10000);
+    setCreditReason("Fondo de Operación Comercial (Aprobación Administrativa)");
+    setCreditNotes("");
+    setIsCreditDialogOpen(true);
+  };
+
+  const handleExecuteCreditSubAgent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin) {
+      toast({
+        title: "No autorizado",
+        description: "Solo el Administrador puede agregar balance.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!subAgentToCredit || creditAmount <= 0) {
+      toast({
+        title: "Monto inválido",
+        description: "Ingresa un monto mayor a 0 para acreditar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreditSubmitting(true);
+    const newBalance = Math.round(((subAgentToCredit.walletBalance || 0) + creditAmount) * 100) / 100;
+    const updated = subAgents.map((sa) =>
+      sa.id === subAgentToCredit.id
+        ? {
+            ...sa,
+            walletBalance: newBalance,
+            updatedAt: new Date().toISOString(),
+          }
+        : sa
+    );
+
+    updateListAndPersist(updated as SubAgent[]);
+    setCreditSubmitting(false);
+    setIsCreditDialogOpen(false);
+
+    toast({
+      title: "¡Balance Operativo Acreditado!",
+      description: `Se han sumado +${creditAmount.toLocaleString()} ${subAgentToCredit.localCurrency} a "${subAgentToCredit.name}". Nuevo saldo: ${newBalance.toLocaleString()} ${subAgentToCredit.localCurrency}.`,
+    });
   };
 
   // Toggle status (Active / Suspended)
@@ -762,6 +834,16 @@ export default function SubAgentsPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  onClick={() => handleOpenCreditDialog(sa)}
+                                  className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                  title="Acreditar Fondo Operativo (Solo Admin)"
+                                >
+                                  <DollarSign className="w-3.5 h-3.5" />
+                                </Button>
+
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() => handleOpenEditDialog(sa)}
                                   className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
                                   title="Editar configuración"
@@ -828,6 +910,122 @@ export default function SubAgentsPage() {
           });
         }}
       />
+
+      {/* Admin Credit Sub-Agent Balance Dialog */}
+      <Dialog open={isCreditDialogOpen} onOpenChange={setIsCreditDialogOpen}>
+        <DialogContent className="max-w-md p-6 !bg-white !opacity-100 border border-slate-200 shadow-2xl text-slate-900 rounded-xl">
+          <DialogHeader className="border-b border-slate-200 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-slate-900">
+                  Acreditar Balance a Sub-Agente
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">
+                  Autorización exclusiva del Administrador General
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {subAgentToCredit && (
+            <form onSubmit={handleExecuteCreditSubAgent} className="space-y-4 pt-2">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Establecimiento:</span>
+                  <span className="font-bold text-slate-900">{subAgentToCredit.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Responsable:</span>
+                  <span className="text-slate-800">{subAgentToCredit.owner} ({subAgentToCredit.id})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Moneda Operativa:</span>
+                  <span className="font-bold text-primary">{subAgentToCredit.localCurrency}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 mt-1">
+                  <span className="text-slate-600 font-medium">Balance Actual:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    {subAgentToCredit.localCurrency === "USD" ? "$" : subAgentToCredit.localCurrency === "DOP" ? "RD$ " : "G "}
+                    {(subAgentToCredit.walletBalance || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-800">
+                  Monto a Acreditar ({subAgentToCredit.localCurrency})
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="any"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className="font-mono text-sm h-10 border-slate-300"
+                  required
+                />
+                <span className="text-[11px] text-slate-500 block">
+                  Nuevo saldo proyectado:{" "}
+                  <strong className="text-emerald-700">
+                    {subAgentToCredit.localCurrency === "USD" ? "$" : subAgentToCredit.localCurrency === "DOP" ? "RD$ " : "G "}
+                    {(((subAgentToCredit.walletBalance || 0) + (creditAmount || 0))).toLocaleString()}
+                  </strong>
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-800">
+                  Concepto / Motivo de Acreditación
+                </Label>
+                <Input
+                  type="text"
+                  value={creditReason}
+                  onChange={(e) => setCreditReason(e.target.value)}
+                  placeholder="Ej. Fondo inicial de caja, Depósito bancario verificado..."
+                  className="text-xs h-9 border-slate-300"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-800">
+                  Notas de Auditoría (Opcional)
+                </Label>
+                <Input
+                  type="text"
+                  value={creditNotes}
+                  onChange={(e) => setCreditNotes(e.target.value)}
+                  placeholder="Referencia bancaria o autorización interna..."
+                  className="text-xs h-9 border-slate-300"
+                />
+              </div>
+
+              <DialogFooter className="border-t border-slate-200 pt-4 flex gap-2 justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCreditDialogOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={creditSubmitting || creditAmount <= 0}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  {creditSubmitting ? "Acreditando..." : "Confirmar y Acreditar Fondos"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

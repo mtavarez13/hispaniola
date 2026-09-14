@@ -74,8 +74,8 @@ export function SubAgentFormDialog({
   // Configuración Financiera y Beneficios
   const [commissionRatePercent, setCommissionRatePercent] = useState<number>(2.5);
   const [localCurrency, setLocalCurrency] = useState<"DOP" | "HTG" | "USD">("DOP");
-  const [walletBalance, setWalletBalance] = useState<number>(10000);
-  const [creditLimit, setCreditLimit] = useState<number>(50000);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [creditLimit, setCreditLimit] = useState<number>(0);
 
   // Ubicación
   const [country, setCountry] = useState<"DO" | "HT">("DO");
@@ -134,8 +134,8 @@ export function SubAgentFormDialog({
 
       setCommissionRatePercent(2.5);
       setLocalCurrency("DOP");
-      setWalletBalance(50000);
-      setCreditLimit(100000);
+      setWalletBalance(0);
+      setCreditLimit(0);
 
       setCountry("DO");
       setProvince("Distrito Nacional");
@@ -489,8 +489,8 @@ export function SubAgentFormDialog({
                     placeholder="0.00"
                     className="h-10 text-sm font-mono"
                   />
-                  <span className="text-[11px] text-muted-foreground">
-                    Saldo precargado disponible para transacciones
+                  <span className="text-[11px] text-amber-700 font-medium block">
+                    ⚡ Por directiva de lanzamiento, las nuevas cuentas inician en balance 0. Solo el Administrador puede acreditar saldo.
                   </span>
                 </div>
 

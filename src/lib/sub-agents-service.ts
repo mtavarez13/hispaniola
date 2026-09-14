@@ -11,8 +11,8 @@ export const DEFAULT_SUB_AGENTS: SubAgent[] = [
     status: "active",
     commissionRatePercent: 2.5,
     localCurrency: "DOP",
-    walletBalance: 185400,
-    creditLimit: 500000,
+    walletBalance: 0,
+    creditLimit: 0,
     location: {
       country: "DO",
       province: "Dajabón",
@@ -47,8 +47,8 @@ export const DEFAULT_SUB_AGENTS: SubAgent[] = [
     status: "active",
     commissionRatePercent: 3.0,
     localCurrency: "HTG",
-    walletBalance: 420000,
-    creditLimit: 1000000,
+    walletBalance: 0,
+    creditLimit: 0,
     location: {
       country: "HT",
       province: "Nord-Est",
@@ -83,8 +83,8 @@ export const DEFAULT_SUB_AGENTS: SubAgent[] = [
     status: "active",
     commissionRatePercent: 2.0,
     localCurrency: "DOP",
-    walletBalance: 95300,
-    creditLimit: 250000,
+    walletBalance: 0,
+    creditLimit: 0,
     location: {
       country: "DO",
       province: "Distrito Nacional",
@@ -119,8 +119,8 @@ export const DEFAULT_SUB_AGENTS: SubAgent[] = [
     status: "active",
     commissionRatePercent: 2.8,
     localCurrency: "USD",
-    walletBalance: 4600,
-    creditLimit: 15000,
+    walletBalance: 0,
+    creditLimit: 0,
     location: {
       country: "HT",
       province: "Ouest",
@@ -155,8 +155,8 @@ export const DEFAULT_SUB_AGENTS: SubAgent[] = [
     status: "active",
     commissionRatePercent: 3.5,
     localCurrency: "DOP",
-    walletBalance: 120000,
-    creditLimit: 300000,
+    walletBalance: 0,
+    creditLimit: 0,
     location: {
       country: "DO",
       province: "Elías Piña",
@@ -183,7 +183,7 @@ export const DEFAULT_SUB_AGENTS: SubAgent[] = [
   }
 ];
 
-const STORAGE_KEY = "hispaniolapay_subagents_v2";
+const STORAGE_KEY = "hispaniolapay_subagents_v3";
 
 export function loadSubAgentsFromStorage(): SubAgent[] {
   if (typeof window === "undefined") return DEFAULT_SUB_AGENTS;

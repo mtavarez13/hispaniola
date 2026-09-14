@@ -32,8 +32,8 @@ const INITIAL_DEMO_PARTNERS: ApiPartner[] = [
     marginPercent: 3.5, // 3.5% de comisión ofrecido al tercero
     commissionType: 'percentage_margin',
     fixedFeeUSD: 0.0,
-    walletBalanceUSD: 1500.0,
-    creditLimitUSD: 500.0,
+    walletBalanceUSD: 0.0,
+    creditLimitUSD: 0.0,
     webhookUrl: 'https://webhook.site/quisqueya-remit-test',
     allowedCorridors: ['DO_TO_HT', 'US_TO_HT', 'US_TO_DO'],
     totalVolumeUSD: 42500.0,
@@ -54,8 +54,8 @@ const INITIAL_DEMO_PARTNERS: ApiPartner[] = [
     marginPercent: 2.8, // 2.8% fijado para este tercero
     commissionType: 'percentage_margin',
     fixedFeeUSD: 0.5,
-    walletBalanceUSD: 3200.0,
-    creditLimitUSD: 1000.0,
+    walletBalanceUSD: 0.0,
+    creditLimitUSD: 0.0,
     webhookUrl: 'https://api.caribbeanpayouts.com/v1/webhooks/hispaniolapay',
     allowedCorridors: ['US_TO_HT', 'DO_TO_HT'],
     totalVolumeUSD: 89300.0,

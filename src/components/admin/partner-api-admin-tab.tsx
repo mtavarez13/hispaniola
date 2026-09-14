@@ -70,8 +70,8 @@ export function PartnerApiAdminTab() {
     email: "",
     phone: "",
     marginPercent: 3.5, // % fijado por defecto
-    initialBalanceUSD: 1000,
-    creditLimitUSD: 500,
+    initialBalanceUSD: 0,
+    creditLimitUSD: 0,
     webhookUrl: "",
     notes: "",
   });
@@ -164,8 +164,8 @@ export function PartnerApiAdminTab() {
           email: "",
           phone: "",
           marginPercent: 3.5,
-          initialBalanceUSD: 1000,
-          creditLimitUSD: 500,
+          initialBalanceUSD: 0,
+          creditLimitUSD: 0,
           webhookUrl: "",
           notes: "",
         });

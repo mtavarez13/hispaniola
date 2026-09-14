@@ -16,8 +16,8 @@ export interface WalletBalances {
 export function getClientWalletBalances(uid: string, initialProfile?: UserProfile | null): WalletBalances {
   if (typeof window === "undefined") {
     return {
-      walletBalance: initialProfile?.walletBalance ?? 150.0,
-      savingsBalance: initialProfile?.savingsBalance ?? 50.0,
+      walletBalance: initialProfile?.walletBalance ?? 0.0,
+      savingsBalance: initialProfile?.savingsBalance ?? 0.0,
       clientCode: initialProfile?.clientCode || "CLI-8821",
       phone: initialProfile?.phone || "+1 (829) 450-2211",
       idNumber: initialProfile?.idNumber || "402-1928374-1",
@@ -30,8 +30,8 @@ export function getClientWalletBalances(uid: string, initialProfile?: UserProfil
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        walletBalance: typeof parsed.walletBalance === "number" ? parsed.walletBalance : 150.0,
-        savingsBalance: typeof parsed.savingsBalance === "number" ? parsed.savingsBalance : 50.0,
+        walletBalance: typeof parsed.walletBalance === "number" ? parsed.walletBalance : (initialProfile?.walletBalance ?? 0.0),
+        savingsBalance: typeof parsed.savingsBalance === "number" ? parsed.savingsBalance : (initialProfile?.savingsBalance ?? 0.0),
         clientCode: parsed.clientCode || initialProfile?.clientCode || `CLI-${Math.floor(1000 + Math.random() * 9000)}`,
         phone: parsed.phone || initialProfile?.phone || "+1 (829) 450-2211",
         idNumber: parsed.idNumber || initialProfile?.idNumber || "402-1928374-1",
@@ -39,11 +39,11 @@ export function getClientWalletBalances(uid: string, initialProfile?: UserProfil
     }
   } catch (_) {}
 
-  // Initial starter data for client
+  // Initial starter data for client: New accounts start strictly at 0.00
   const defaultCode = initialProfile?.clientCode || `CLI-${Math.floor(1000 + Math.random() * 9000)}`;
   const starter: WalletBalances = {
-    walletBalance: initialProfile?.walletBalance ?? 150.0,
-    savingsBalance: initialProfile?.savingsBalance ?? 50.0,
+    walletBalance: initialProfile?.walletBalance ?? 0.0,
+    savingsBalance: initialProfile?.savingsBalance ?? 0.0,
     clientCode: defaultCode,
     phone: initialProfile?.phone || "+1 (829) 450-2211",
     idNumber: initialProfile?.idNumber || "402-1928374-1",
@@ -81,55 +81,7 @@ export function getClientDeposits(clientId?: string): ClientDepositRecord[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(CLIENT_DEPOSITS_KEY);
-    let list: ClientDepositRecord[] = raw ? JSON.parse(raw) : [];
-
-    // If empty and client is specified, seed default sample history
-    if (list.length === 0 && clientId) {
-      list = [
-        {
-          id: "DEP-8192",
-          clientId,
-          clientName: "Cliente Registrado",
-          clientCode: "CLI-8821",
-          clientPhone: "+1 (829) 450-2211",
-          amount: 6000,
-          currency: "DOP",
-          amountCreditedUSD: 100.0,
-          method: "sub_agent",
-          subAgentId: "SA-101",
-          subAgentName: "Agencia Fronteriza Dajabón",
-          subAgentLocation: "Calle Beller #14, Dajabón",
-          targetPocket: "main",
-          status: "completed",
-          voucherCode: "VOUCH-8192-DJB",
-          notes: "Depósito en efectivo recibido por el cajero del sub-agente.",
-          createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-          confirmedAt: new Date(Date.now() - 86400000 * 2 + 180000).toISOString(),
-          confirmedBy: "Juan Carlos Martínez (SA-101)",
-        },
-        {
-          id: "DEP-7940",
-          clientId,
-          clientName: "Cliente Registrado",
-          clientCode: "CLI-8821",
-          clientPhone: "+1 (829) 450-2211",
-          amount: 50.0,
-          currency: "USD",
-          amountCreditedUSD: 50.0,
-          method: "bank_transfer",
-          bankName: "Banreservas",
-          bankReference: "REF-BR-994821",
-          targetPocket: "savings",
-          status: "completed",
-          voucherCode: "VOUCH-7940-BRS",
-          notes: "Transferencia bancaria acreditada directamente al Bolsillo de Ahorro.",
-          createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-          confirmedAt: new Date(Date.now() - 86400000 * 5 + 3600000).toISOString(),
-          confirmedBy: "Sistema Automático Gmail",
-        },
-      ];
-      localStorage.setItem(CLIENT_DEPOSITS_KEY, JSON.stringify(list));
-    }
+    const list: ClientDepositRecord[] = raw ? JSON.parse(raw) : [];
 
     if (clientId) {
       return list.filter((d) => d.clientId === clientId);
@@ -161,56 +113,7 @@ export function getClientMovements(clientId: string): ClientWalletMovement[] {
   const key = `${CLIENT_MOVEMENTS_KEY_PREFIX}${clientId}`;
   try {
     const raw = localStorage.getItem(key);
-    let list: ClientWalletMovement[] = raw ? JSON.parse(raw) : [];
-
-    if (list.length === 0) {
-      list = [
-        {
-          id: "MOV-901",
-          clientId,
-          type: "deposit_sub_agent",
-          title: "Depósito en Sub-Agente Dajabón",
-          description: "Entregado en efectivo en Agencia Fronteriza Dajabón (SA-101)",
-          amountUSD: 100.0,
-          direction: "in",
-          targetPocket: "main",
-          date: new Date(Date.now() - 86400000 * 2).toISOString(),
-          referenceId: "DEP-8192",
-          status: "completed",
-          receiptCode: "REC-SA-8192",
-        },
-        {
-          id: "MOV-902",
-          clientId,
-          type: "transfer_to_savings",
-          title: "Traspaso a Bolsillo de Ahorro",
-          description: "Ahorro programado apartado de la billetera principal",
-          amountUSD: 50.0,
-          direction: "transfer",
-          targetPocket: "savings",
-          date: new Date(Date.now() - 86400000 * 1.5).toISOString(),
-          status: "completed",
-          receiptCode: "REC-SAV-501",
-        },
-        {
-          id: "MOV-903",
-          clientId,
-          type: "remittance_moncash",
-          title: "Envío Remesa MonCash Haití",
-          description: "Transferencia directa a Jean Baptiste (+509 4088-5084)",
-          amountUSD: 35.0,
-          direction: "out",
-          targetPocket: "main",
-          date: new Date(Date.now() - 86400000 * 0.8).toISOString(),
-          referenceId: "HT-992144",
-          recipient: "Jean Baptiste (MonCash)",
-          status: "completed",
-          receiptCode: "REC-MC-9921",
-        },
-      ];
-      localStorage.setItem(key, JSON.stringify(list));
-    }
-
+    const list: ClientWalletMovement[] = raw ? JSON.parse(raw) : [];
     return list;
   } catch (_) {
     return [];

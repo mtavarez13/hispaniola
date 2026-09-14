@@ -152,8 +152,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: cleanEmail,
       role: computedRole,
       country: extraData?.country || (cleanEmail.endsWith(".ht") ? "HT" : "DO"),
-      walletBalance: computedRole === "customer" ? 150.00 : 2450.75,
-      savingsBalance: computedRole === "customer" ? 50.00 : 0.00,
+      walletBalance: 0.00,
+      savingsBalance: 0.00,
       phone: extraData?.phone || "+1 (829) 450-2211",
       idNumber: extraData?.idNumber || "",
       clientCode: generatedCode,
@@ -175,9 +175,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (computedRole === "admin" && data.role !== "admin") {
           data.role = "admin";
         }
-        // Ensure clientCode & savings exist
+        // Ensure clientCode, walletBalance & savings exist
         if (!data.clientCode) data.clientCode = generatedCode;
-        if (data.savingsBalance === undefined) data.savingsBalance = computedRole === "customer" ? 50.00 : 0;
+        if (data.walletBalance === undefined) data.walletBalance = 0.00;
+        if (data.savingsBalance === undefined) data.savingsBalance = 0.00;
         setUserProfile(data);
         try {
           localStorage.setItem(cachedKey, JSON.stringify(data));
@@ -193,8 +194,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: cleanEmail,
           role: computedRole,
           country: extraData?.country || (cleanEmail.endsWith(".ht") ? "HT" : "DO"),
-          walletBalance: computedRole === "customer" ? 150.00 : 2450.75,
-          savingsBalance: computedRole === "customer" ? 50.00 : 0.00,
+          walletBalance: 0.00,
+          savingsBalance: 0.00,
           phone: extraData?.phone || "+1 (829) 450-2211",
           idNumber: extraData?.idNumber || "",
           clientCode: generatedCode,
