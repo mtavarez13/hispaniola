@@ -49,8 +49,11 @@ import {
   Landmark,
   Palette,
   MailCheck,
-  PiggyBank
+  PiggyBank,
+  Terminal
 } from "lucide-react"
+import { PartnerApiAdminTab } from "@/components/admin/partner-api-admin-tab"
+
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -406,9 +409,12 @@ export default function AdminPage() {
 
       {/* Main Tabs */}
       <Tabs defaultValue="rates" className="space-y-6">
-        <TabsList className="bg-white p-1 border border-border rounded-lg grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 max-w-6xl">
+        <TabsList className="bg-white p-1 border border-border rounded-lg grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 max-w-7xl">
           <TabsTrigger value="rates" className="gap-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-white">
             <TrendingUp className="w-4 h-4" /> Fijar Tasas
+          </TabsTrigger>
+          <TabsTrigger value="partners" className="gap-2 text-xs font-semibold data-[state=active]:bg-purple-700 data-[state=active]:text-white">
+            <Terminal className="w-4 h-4 text-purple-300" /> API Terceros
           </TabsTrigger>
           <TabsTrigger value="wallets" className="gap-2 text-xs font-semibold data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <PiggyBank className="w-4 h-4 text-emerald-300" /> Billeteras
@@ -1451,6 +1457,11 @@ export default function AdminPage() {
         {/* TAB: LOGO & MARCA */}
         <TabsContent value="branding" className="space-y-6">
           <LogoAndBrandingSettingsCard />
+        </TabsContent>
+
+        {/* TAB: API PARA TERCEROS / SOCIOS B2B */}
+        <TabsContent value="partners" className="space-y-6">
+          <PartnerApiAdminTab />
         </TabsContent>
 
       </Tabs>

@@ -22,6 +22,12 @@ service cloud.firestore {
     match /qik_transactions/{txId} {
       allow read, write: if true;
     }
+    match /partners/{partnerId} {
+      allow read, write: if true;
+    }
+    match /partner_transfers/{transferId} {
+      allow read, write: if true;
+    }
     match /{document=**} {
       allow read, write: if true;
     }

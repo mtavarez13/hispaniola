@@ -14,6 +14,7 @@ import {
   BarChart3,
   MailCheck,
   PiggyBank,
+  Terminal,
 } from "lucide-react"
 
 import Link from "next/link"
@@ -103,6 +104,12 @@ export function NavMain({ role }: { role: string }) {
       title: t('sidebar_admin'),
       icon: ShieldCheck,
       url: "/dashboard/admin",
+      show: isAdmin,
+    },
+    {
+      title: "API Terceros (B2B)",
+      icon: Terminal,
+      url: "/dashboard/partners-api",
       show: isAdmin,
     },
     {

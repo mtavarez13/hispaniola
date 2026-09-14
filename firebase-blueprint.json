@@ -70,6 +70,52 @@
         "currentBalanceRD": { "type": "number" },
         "totalSpentRD": { "type": "number" }
       }
+    },
+    "partners": {
+      "title": "API Partners",
+      "description": "External B2B partners registered for programmatic remittance integration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "company": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "apiKey": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "suspended", "pending_review"] },
+        "marginPercent": { "type": "number" },
+        "commissionType": { "type": "string" },
+        "fixedFeeUSD": { "type": "number" },
+        "walletBalanceUSD": { "type": "number" },
+        "creditLimitUSD": { "type": "number" },
+        "webhookUrl": { "type": "string" },
+        "allowedCorridors": { "type": "array" },
+        "totalVolumeUSD": { "type": "number" },
+        "totalTransactions": { "type": "number" },
+        "totalCommissionEarnedUSD": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "apiKey", "marginPercent"]
+    },
+    "partner_transfers": {
+      "title": "Partner B2B Transfers",
+      "description": "Remittance transactions executed through partner API keys",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "partnerName": { "type": "string" },
+        "status": { "type": "string" },
+        "sourceAmount": { "type": "number" },
+        "sourceCurrency": { "type": "string" },
+        "targetAmount": { "type": "number" },
+        "targetCurrency": { "type": "string" },
+        "exchangeRate": { "type": "number" },
+        "partnerCommissionUSD": { "type": "number" },
+        "netDebitedUSD": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "partnerId", "status", "sourceAmount", "targetAmount"]
     }
   },
   "firestore": {
@@ -88,6 +134,14 @@
     "/qik_agents/{agentId}": {
       "schema": "qik_agents",
       "description": "Sub-agents with Qik bill-payment balances"
+    },
+    "/partners/{partnerId}": {
+      "schema": "partners",
+      "description": "Registered B2B partners and their custom margin percentages"
+    },
+    "/partner_transfers/{transferId}": {
+      "schema": "partner_transfers",
+      "description": "Transactions dispatched via Partner API"
     }
   }
 }

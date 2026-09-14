@@ -20,21 +20,34 @@ googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
 
-const databaseId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)"
+const targetDatabaseId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)"
   ? firebaseConfig.firestoreDatabaseId
   : undefined;
 
 let firestoreInstance: Firestore;
 try {
-  firestoreInstance = initializeFirestore(app, {
-    ignoreUndefinedProperties: true,
-    experimentalForceLongPolling: true,
-  });
+  firestoreInstance = targetDatabaseId
+    ? initializeFirestore(
+        app,
+        {
+          ignoreUndefinedProperties: true,
+          experimentalForceLongPolling: true,
+        },
+        targetDatabaseId
+      )
+    : initializeFirestore(app, {
+        ignoreUndefinedProperties: true,
+        experimentalForceLongPolling: true,
+      });
 } catch (e) {
   try {
-    firestoreInstance = getFirestore(app);
+    firestoreInstance = targetDatabaseId
+      ? getFirestore(app, targetDatabaseId)
+      : getFirestore(app);
   } catch (err) {
-    firestoreInstance = getFirestore();
+    firestoreInstance = targetDatabaseId
+      ? getFirestore(app, targetDatabaseId)
+      : getFirestore();
   }
 }
 

@@ -376,5 +376,89 @@ export interface SubAgent {
   notes?: string;
 }
 
+// ==========================================
+// API PARA TERCEROS / PARTNERS EXTERNOS (B2B)
+// ==========================================
+export type PartnerStatus = 'active' | 'suspended' | 'revoked';
+export type PartnerCommissionType = 'percentage_margin' | 'fixed_commission';
+export type PartnerCorridor = 'DO_TO_HT' | 'US_TO_HT' | 'US_TO_DO' | 'DO_TO_DO';
+
+export interface ApiPartner {
+  id: string; // e.g. "ptn_941028" o "PTN-001"
+  name: string; // Nombre de la empresa o sistema tercero
+  company: string; // Razón social
+  email: string; // Email de contacto técnico
+  phone?: string;
+  apiKey: string; // Llave secreta (e.g. "hp_live_...")
+  status: PartnerStatus;
+  
+  // % FIJADO AL TERCERO (Requerimiento Principal)
+  marginPercent: number; // e.g. 3.5% (El % que gana o se le concede al tercero)
+  commissionType: PartnerCommissionType;
+  fixedFeeUSD?: number; // Fee fijo por transacción si aplica
+
+  // Billetera B2B / Fondos Prepagados
+  walletBalanceUSD: number; // Saldo disponible para debitar transferencias vía API
+  creditLimitUSD: number; // Línea de crédito permitida
+
+  // Webhooks y Conectividad
+  webhookUrl?: string; // Endpoint HTTP del tercero para recibir callbacks de estado
+  webhookSecret?: string; // Clave para firmar el payload del webhook
+  allowedIps?: string[]; // IPs permitidas (opcional)
+  allowedCorridors: PartnerCorridor[];
+
+  // Métricas y Auditoría
+  totalVolumeUSD: number;
+  totalTransactions: number;
+  totalCommissionEarnedUSD: number;
+  lastUsedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+  notes?: string;
+}
+
+export interface PartnerTransfer {
+  id: string; // e.g. "TRX-PTN-8921"
+  partnerId: string;
+  partnerName: string;
+  partnerReference?: string; // ID interno de la orden en el sistema del tercero
+  
+  sender: {
+    name: string;
+    phone?: string;
+    country: 'DO' | 'US' | string;
+    documentId?: string;
+  };
+
+  recipient: {
+    name: string;
+    phone: string; // 509XXXXXXXX o teléfono RD
+    operator: 'MonCash' | 'NatCash' | 'Banreservas' | 'Banco BHD' | 'Banco Popular' | string;
+    accountNumber?: string;
+    documentId?: string;
+  };
+
+  corridor: PartnerCorridor;
+  sourceCurrency: 'USD' | 'DOP';
+  sourceAmount: number;
+  exchangeRate: number; // Tasa de cambio aplicada con el margen
+  targetCurrency: 'HTG' | 'DOP' | 'USD';
+  targetAmount: number; // Monto entregado a la familia en destino
+  
+  platformFeeUSD: number; // Costo total del fee
+  partnerCommissionPercent: number; // % acordado con el tercero
+  partnerCommissionUSD: number; // Comisión generada para el tercero
+  netDebitedUSD: number; // Monto total debitado de la cuenta del partner
+
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  trackingCode: string;
+  operatorReference?: string; // TxID de MonCash/NatCash
+  failureReason?: string;
+  createdAt: string;
+  completedAt?: string;
+  webhookDelivered?: boolean;
+}
+
+
 
 
