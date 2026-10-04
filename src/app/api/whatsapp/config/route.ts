@@ -5,6 +5,9 @@ import { adminAuthError, requireAdmin } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
 
+const webhookUrl = process.env.WHATSAPP_WEBHOOK_PUBLIC_URL ||
+  'https://hispaniola--studio-4779362907-870c5.us-east4.hosted.app/api/whatsapp/webhook';
+
 export async function GET(req: NextRequest) {
   try {
   await requireAdmin(req, { requireSettings: true });
@@ -30,7 +33,7 @@ export async function GET(req: NextRequest) {
       webhookVerifyToken: effectiveConfig.webhookVerifyToken,
       hasAppSecret: Boolean(effectiveConfig.appSecret),
       appSecret: effectiveConfig.appSecret,
-      webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hispaniolapay.com'}/api/whatsapp/webhook`.replace(/([^:]\/)\/+/, '$1'),
+      webhookUrl,
       notifySender: effectiveConfig.notifySender,
       notifyRecipient: effectiveConfig.notifyRecipient,
       notifyInvoices: effectiveConfig.notifyInvoices,
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
         phoneNumberId: newConfig.phoneNumberId,
         businessAccountId: newConfig.businessAccountId,
         webhookVerifyToken: newConfig.webhookVerifyToken,
-        webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hispaniolapay.com'}/api/whatsapp/webhook`.replace(/([^:]\/)\/+/, '$1'),
+        webhookUrl,
         notifySender: newConfig.notifySender,
         notifyRecipient: newConfig.notifyRecipient,
         notifyInvoices: newConfig.notifyInvoices,

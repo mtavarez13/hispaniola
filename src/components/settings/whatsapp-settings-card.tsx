@@ -104,6 +104,7 @@ export function WhatsAppSettingsCard({
   previewTab,
   setPreviewTab,
 }: WhatsAppSettingsCardProps) {
+  const webhookUrl = process.env.NEXT_PUBLIC_WHATSAPP_WEBHOOK_URL || "https://hispaniola--studio-4779362907-870c5.us-east4.hosted.app/api/whatsapp/webhook"
   const [showToken, setShowToken] = useState(false)
   const [copiedToken, setCopiedToken] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
@@ -440,7 +441,7 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`
               <div className="grid md:grid-cols-2 gap-3 pt-2">
                 <div className="space-y-1">
                   <Label htmlFor="wa-webhook-url" className="text-xs font-bold">Callback URL para Meta</Label>
-                  <Input id="wa-webhook-url" readOnly value="https://www.hispaniolapay.com/api/whatsapp/webhook" className="font-mono text-[11px] bg-white" />
+                  <Input id="wa-webhook-url" readOnly value={webhookUrl} className="font-mono text-[11px] bg-white" />
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">

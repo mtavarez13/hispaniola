@@ -21,6 +21,15 @@ env:
     value: v24.0
     availability:
       - RUNTIME
+  - variable: WHATSAPP_WEBHOOK_PUBLIC_URL
+    value: https://hispaniola--studio-4779362907-870c5.us-east4.hosted.app/api/whatsapp/webhook
+    availability:
+      - RUNTIME
+  - variable: NEXT_PUBLIC_WHATSAPP_WEBHOOK_URL
+    value: https://hispaniola--studio-4779362907-870c5.us-east4.hosted.app/api/whatsapp/webhook
+    availability:
+      - BUILD
+      - RUNTIME
 
 # Antes de habilitar integraciones externas, configure sus claves mediante
 # Secret Manager y referencias `secret:` en este archivo. Nunca incluya las
