@@ -8,7 +8,7 @@ import {
   rememberTxRequestId,
   BencashDepositService,
 } from '@/lib/bencash/service';
-import { getBencashServerConfig, saveBencashServerConfig } from '@/lib/server-config';
+import { getPersistentBencashServerConfig, saveBencashServerConfig } from '@/lib/server-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const headerKey = req.headers.get('x-bencash-key') || req.headers.get('skml') || '';
     const headerBaseUrl = req.headers.get('x-bencash-base-url') || '';
-    const serverConfig = getBencashServerConfig();
+    const serverConfig = await getPersistentBencashServerConfig();
 
     const effectivePrivateKey = (body.privateKey || headerKey || serverConfig.privateKey || process.env.BENCASH_PRIVATE_KEY || '').trim();
     const effectiveBaseUrl = (body.baseUrl || headerBaseUrl || serverConfig.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com').trim();
@@ -60,6 +60,13 @@ export async function POST(req: NextRequest) {
 
     const cleanPhone = formatHaitiPhoneNumber(String(toAccountNumber));
     const detected = detectHaitiOperator(cleanPhone);
+
+    if (!/^509\d{8}$/.test(cleanPhone)) {
+      return NextResponse.json(
+        { resultCode: '422', resultMessage: 'El teléfono debe contener exactamente 8 dígitos de Haití, con el prefijo 509 agregado automáticamente.' },
+        { status: 422 }
+      );
+    }
     const normalizedSelected = String(operator || channel || '').trim().toLowerCase();
     const isMoncash =
       normalizedSelected === 'moncash' ||

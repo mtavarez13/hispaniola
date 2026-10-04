@@ -515,22 +515,6 @@ export class BencashDepositService {
   }) {
     return [
       {
-        id: 'legacy_lower_with_verify',
-        name: 'Fórmula Oficial con verifyCode (Minúsculas)',
-        signature: this.generateConfirmCashInSignature({
-          ...params,
-          includeVerifyCode: true,
-          casing: 'lower',
-          includeBraces: true,
-        }),
-        bodyData: {
-          requestId: params.requestId,
-          txId: params.txId,
-          verifyCode: params.verifyCode,
-          isConfirm: params.isConfirm,
-        },
-      },
-      {
         id: 'dto_lower_no_verify',
         name: 'Esquema DTO Swagger (Sin verifyCode, Minúsculas)',
         signature: this.generateConfirmCashInSignature({
@@ -542,6 +526,22 @@ export class BencashDepositService {
         bodyData: {
           requestId: params.requestId,
           txId: params.txId,
+          isConfirm: params.isConfirm,
+        },
+      },
+      {
+        id: 'legacy_lower_with_verify',
+        name: 'Variante heredada con verifyCode (Minúsculas)',
+        signature: this.generateConfirmCashInSignature({
+          ...params,
+          includeVerifyCode: true,
+          casing: 'lower',
+          includeBraces: true,
+        }),
+        bodyData: {
+          requestId: params.requestId,
+          txId: params.txId,
+          verifyCode: params.verifyCode,
           isConfirm: params.isConfirm,
         },
       },
@@ -660,6 +660,7 @@ export class BencashDepositService {
               method: 'POST',
               headers,
               body: JSON.stringify(bodyData),
+              signal: AbortSignal.timeout(15000),
             });
 
             const rawText = await response.text();
@@ -673,7 +674,15 @@ export class BencashDepositService {
             lastResponse = parsedData;
 
             // Si la respuesta es exitosa
-            if (parsedData && (parsedData.resultCode === '200' || parsedData.resultCode === 200 || parsedData.result)) {
+            const providerCode = String(parsedData?.resultCode ?? '');
+            const providerResult = parsedData?.result;
+            const providerAccepted =
+              response.ok &&
+              providerCode === '200' &&
+              typeof providerResult === 'object' &&
+              providerResult !== null;
+
+            if (providerAccepted) {
               candidateAccepted = true;
               const rawResult = typeof parsedData.result === 'object' && parsedData.result !== null ? parsedData.result : {};
               const txId = rawResult.txId || parsedData.txId || parsedData.transactionId;
@@ -769,10 +778,14 @@ export class BencashDepositService {
               }
 
               return {
-                resultCode: String(parsedData?.resultCode || '400'),
-                resultMessage: msg || `Error ${response.status} de Bencash`,
+                resultCode: String(parsedData?.resultCode ?? response.status ?? '502'),
+                resultMessage: msg || `BenCash rechazó la solicitud (HTTP ${response.status})`,
                 message: msg,
                 requestId: activeReqId,
+                data: {
+                  providerHttpStatus: response.status,
+                  endpoint,
+                },
               };
             }
 
@@ -798,10 +811,15 @@ export class BencashDepositService {
         };
       } catch (error: any) {
         console.error('Error connecting to Bencash API (requestCashIn):', error);
+        const isTimeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
         return {
-          resultCode: '500',
-          resultMessage: `Error de red al conectar con Bencash API: ${error.message}`,
+          resultCode: isTimeout ? '504' : '502',
+          resultMessage: isTimeout
+            ? 'BenCash no respondió al envío NatCash dentro de 15 segundos. No se reintentó automáticamente para evitar una remesa duplicada.'
+            : `No fue posible conectar con BenCash API: ${error.message}`,
+          message: error?.message,
           requestId: activeReqId,
+          data: { endpoint, networkError: true, timeout: isTimeout },
         };
       }
     }
@@ -1026,6 +1044,7 @@ export class BencashDepositService {
             method: 'POST',
             headers,
             body: JSON.stringify(bodyData),
+            signal: AbortSignal.timeout(15000),
           });
 
           const rawText = await response.text();
@@ -1038,7 +1057,13 @@ export class BencashDepositService {
 
           lastResponse = parsedData;
 
-          if (parsedData && (parsedData.resultCode === '200' || parsedData.resultCode === 200 || parsedData.result)) {
+          const providerAccepted =
+            response.ok &&
+            String(parsedData?.resultCode ?? '') === '200' &&
+            typeof parsedData?.result === 'object' &&
+            parsedData.result !== null;
+
+          if (providerAccepted) {
             const resObj = typeof parsedData.result === 'object' && parsedData.result !== null ? parsedData.result : {};
             return {
               resultCode: '200',
@@ -1086,9 +1111,12 @@ export class BencashDepositService {
         };
       } catch (err: any) {
         console.error('Error llamando a Bencash confirmcashin:', err);
+        const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
         return {
-          resultCode: '500',
-          resultMessage: `Fallo de conexión al confirmar depósito: ${err.message || 'Error de red'}`,
+          resultCode: isTimeout ? '504' : '502',
+          resultMessage: isTimeout
+            ? 'BenCash no respondió a la confirmación dentro de 15 segundos. Consulte el estado antes de reintentar.'
+            : `Fallo de conexión al confirmar depósito: ${err.message || 'Error de red'}`,
           requestId,
         };
       }
