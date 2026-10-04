@@ -13,6 +13,8 @@ export interface WhatsAppServerConfig {
   apiToken: string;
   phoneNumberId: string;
   businessAccountId?: string;
+  webhookVerifyToken?: string;
+  appSecret?: string;
   notifySender: boolean;
   notifyRecipient: boolean;
   notifyInvoices: boolean;
@@ -31,6 +33,7 @@ let cachedBencash: BencashServerConfig | null = null;
 let cachedWhatsApp: WhatsAppServerConfig | null = null;
 
 const BENCASH_CONFIG_DOCUMENT = adminDb.collection('server_config').doc('bencash');
+const WHATSAPP_CONFIG_DOCUMENT = adminDb.collection('server_config').doc('whatsapp');
 
 /**
  * Obtiene la configuración de BenCash asegurando persistencia en servidor
@@ -158,6 +161,8 @@ export function getWhatsAppServerConfig(): WhatsAppServerConfig {
             apiToken: (parsed.apiToken || process.env.WHATSAPP_API_TOKEN || '').trim(),
             phoneNumberId: (parsed.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim(),
             businessAccountId: (parsed.businessAccountId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '').trim(),
+            webhookVerifyToken: (parsed.webhookVerifyToken || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '').trim(),
+            appSecret: (parsed.appSecret || process.env.WHATSAPP_APP_SECRET || '').trim(),
             notifySender: parsed.notifySender !== undefined ? Boolean(parsed.notifySender) : true,
             notifyRecipient: parsed.notifyRecipient !== undefined ? Boolean(parsed.notifyRecipient) : true,
             notifyInvoices: parsed.notifyInvoices !== undefined ? Boolean(parsed.notifyInvoices) : true,
@@ -178,6 +183,8 @@ export function getWhatsAppServerConfig(): WhatsAppServerConfig {
     apiToken: (process.env.WHATSAPP_API_TOKEN || '').trim(),
     phoneNumberId: (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim(),
     businessAccountId: (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '').trim(),
+    webhookVerifyToken: (process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '').trim(),
+    appSecret: (process.env.WHATSAPP_APP_SECRET || '').trim(),
     notifySender: true,
     notifyRecipient: true,
     notifyInvoices: true,
@@ -196,6 +203,8 @@ export function saveWhatsAppServerConfig(config: Partial<WhatsAppServerConfig>):
     ...config,
     apiToken: config.apiToken !== undefined ? config.apiToken.trim() : current.apiToken,
     phoneNumberId: config.phoneNumberId !== undefined ? config.phoneNumberId.trim() : current.phoneNumberId,
+    webhookVerifyToken: config.webhookVerifyToken !== undefined ? config.webhookVerifyToken.trim() : current.webhookVerifyToken,
+    appSecret: config.appSecret !== undefined ? config.appSecret.trim() : current.appSecret,
   };
 
   cachedWhatsApp = updated;
@@ -214,5 +223,28 @@ export function saveWhatsAppServerConfig(config: Partial<WhatsAppServerConfig>):
     }
   }
 
+  return updated;
+}
+
+export async function getPersistentWhatsAppServerConfig(): Promise<WhatsAppServerConfig> {
+  try {
+    const snapshot = await WHATSAPP_CONFIG_DOCUMENT.get();
+    if (snapshot.exists) {
+      return saveWhatsAppServerConfig(snapshot.data() as Partial<WhatsAppServerConfig>);
+    }
+  } catch (error) {
+    console.warn('[ServerConfig] No se pudo leer WhatsApp desde Firestore; usando caché local:', error);
+  }
+  return getWhatsAppServerConfig();
+}
+
+export async function savePersistentWhatsAppServerConfig(
+  config: Partial<WhatsAppServerConfig>
+): Promise<WhatsAppServerConfig> {
+  const updated = saveWhatsAppServerConfig(config);
+  await WHATSAPP_CONFIG_DOCUMENT.set(
+    { ...updated, updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
   return updated;
 }

@@ -27,7 +27,8 @@ import {
   Globe,
   RefreshCw,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Radio
 } from "lucide-react"
 
 interface WhatsAppSettingsCardProps {
@@ -41,6 +42,10 @@ interface WhatsAppSettingsCardProps {
   setWaPhoneId: (v: string) => void
   waBusinessId: string
   setWaBusinessId: (v: string) => void
+  waWebhookVerifyToken: string
+  setWaWebhookVerifyToken: (v: string) => void
+  waAppSecret: string
+  setWaAppSecret: (v: string) => void
   waNotifySender: boolean
   setWaNotifySender: (v: boolean) => void
   waNotifyRecipient: boolean
@@ -74,6 +79,10 @@ export function WhatsAppSettingsCard({
   setWaPhoneId,
   waBusinessId,
   setWaBusinessId,
+  waWebhookVerifyToken,
+  setWaWebhookVerifyToken,
+  waAppSecret,
+  setWaAppSecret,
   waNotifySender,
   setWaNotifySender,
   waNotifyRecipient,
@@ -417,8 +426,35 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`
                 </div>
               </div>
               <p className="text-[11px] text-slate-500">
-                Se almacena con cifrado y se usa en el servidor Next.js para firmar las llamadas a la Graph API de Meta.
+                Se utiliza únicamente en el servidor para autorizar llamadas a la Graph API de Meta.
               </p>
+            </div>
+
+            <div className="space-y-1.5 md:col-span-2 p-4 rounded-xl border border-emerald-200 bg-emerald-50/40">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-sm font-bold text-emerald-950 flex items-center gap-1.5">
+                  <Radio className="w-4 h-4 text-emerald-600" /> Recepción de mensajes por Webhook
+                </Label>
+                <Badge className="bg-emerald-600 text-white text-[10px]">Solo administradores</Badge>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3 pt-2">
+                <div className="space-y-1">
+                  <Label htmlFor="wa-webhook-url" className="text-xs font-bold">Callback URL para Meta</Label>
+                  <Input id="wa-webhook-url" readOnly value="https://www.hispaniolapay.com/api/whatsapp/webhook" className="font-mono text-[11px] bg-white" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="wa-webhook-token" className="text-xs font-bold">Verify Token <span className="text-red-500">*</span></Label>
+                    <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => setWaWebhookVerifyToken(`hp_${crypto.randomUUID().replace(/-/g, "")}`)}>Generar</Button>
+                  </div>
+                  <Input id="wa-webhook-token" value={waWebhookVerifyToken} onChange={(e) => setWaWebhookVerifyToken(e.target.value)} placeholder="Token que pegarás en Meta" className="font-mono text-[11px] bg-white" />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label htmlFor="wa-app-secret" className="text-xs font-bold">Meta App Secret (recomendado para validar firmas)</Label>
+                  <Input id="wa-app-secret" type="password" value={waAppSecret} onChange={(e) => setWaAppSecret(e.target.value)} placeholder="App Secret de developers.facebook.com" className="font-mono text-[11px] bg-white" />
+                </div>
+              </div>
+              <p className="text-[11px] text-emerald-900/75">En Meta Developers suscribe el campo <b>messages</b>. Los mensajes entrantes aparecerán en “Bandeja WhatsApp” y no serán visibles para clientes ni agentes.</p>
             </div>
 
           </div>

@@ -101,6 +101,8 @@ const DEFAULT_SETTINGS: SystemSettings = {
   whatsappApiToken: "",
   whatsappPhoneNumberId: "",
   whatsappBusinessAccountId: "",
+  whatsappWebhookVerifyToken: "",
+  whatsappAppSecret: "",
   whatsappNotifySender: true,
   whatsappNotifyRecipient: true,
   whatsappNotifyInvoices: true,
@@ -173,6 +175,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
               whatsappProvider: cfg.provider || prev.whatsappProvider,
               whatsappPhoneNumberId: cfg.phoneNumberId || prev.whatsappPhoneNumberId,
               whatsappBusinessAccountId: cfg.businessAccountId || prev.whatsappBusinessAccountId,
+              whatsappWebhookVerifyToken: cfg.webhookVerifyToken || prev.whatsappWebhookVerifyToken,
+              whatsappAppSecret: cfg.appSecret || prev.whatsappAppSecret,
               whatsappApiToken: cfg.apiToken || prev.whatsappApiToken,
               whatsappNotifySender: cfg.notifySender !== undefined ? cfg.notifySender : prev.whatsappNotifySender,
               whatsappNotifyRecipient: cfg.notifyRecipient !== undefined ? cfg.notifyRecipient : prev.whatsappNotifyRecipient,
@@ -282,6 +286,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         newSettings.whatsappApiEnabled !== undefined ||
         newSettings.whatsappApiToken !== undefined ||
         newSettings.whatsappPhoneNumberId !== undefined ||
+        newSettings.whatsappWebhookVerifyToken !== undefined ||
+        newSettings.whatsappAppSecret !== undefined ||
         newSettings.whatsappProvider !== undefined ||
         newSettings.whatsappNotifySender !== undefined ||
         newSettings.whatsappNotifyRecipient !== undefined ||
@@ -296,6 +302,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             apiToken: updated.whatsappApiToken,
             phoneNumberId: updated.whatsappPhoneNumberId,
             businessAccountId: updated.whatsappBusinessAccountId,
+            webhookVerifyToken: updated.whatsappWebhookVerifyToken,
+            appSecret: updated.whatsappAppSecret,
             notifySender: updated.whatsappNotifySender,
             notifyRecipient: updated.whatsappNotifyRecipient,
             notifyInvoices: updated.whatsappNotifyInvoices,

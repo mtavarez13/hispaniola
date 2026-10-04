@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WhatsAppService, WhatsAppConfig } from '@/lib/whatsapp/service';
-import { getWhatsAppServerConfig, saveWhatsAppServerConfig } from '@/lib/server-config';
+import { getPersistentWhatsAppServerConfig, savePersistentWhatsAppServerConfig } from '@/lib/server-config';
+import { adminAuthError, requireAdmin } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const persisted = getWhatsAppServerConfig();
+export async function GET(req: NextRequest) {
+  try {
+  await requireAdmin(req, { requireSettings: true });
+  const persisted = await getPersistentWhatsAppServerConfig();
   const config = WhatsAppService.getConfig();
   const effectiveConfig = {
     ...persisted,
     ...config,
     apiToken: config.apiToken || persisted.apiToken || '',
     phoneNumberId: config.phoneNumberId || persisted.phoneNumberId || '',
+    businessAccountId: config.businessAccountId || persisted.businessAccountId || '',
+    webhookVerifyToken: config.webhookVerifyToken || persisted.webhookVerifyToken || '',
+    appSecret: config.appSecret || persisted.appSecret || '',
   };
 
   return NextResponse.json({
@@ -21,6 +27,10 @@ export async function GET() {
       provider: effectiveConfig.provider,
       phoneNumberId: effectiveConfig.phoneNumberId,
       businessAccountId: effectiveConfig.businessAccountId,
+      webhookVerifyToken: effectiveConfig.webhookVerifyToken,
+      hasAppSecret: Boolean(effectiveConfig.appSecret),
+      appSecret: effectiveConfig.appSecret,
+      webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hispaniolapay.com'}/api/whatsapp/webhook`.replace(/([^:]\/)\/+/, '$1'),
       notifySender: effectiveConfig.notifySender,
       notifyRecipient: effectiveConfig.notifyRecipient,
       notifyInvoices: effectiveConfig.notifyInvoices,
@@ -31,10 +41,15 @@ export async function GET() {
       apiToken: effectiveConfig.apiToken, // Para recarga en el formulario administrativo
     },
   });
+  } catch (error) {
+    const authError = adminAuthError(error);
+    return NextResponse.json({ success: false, error: authError.message }, { status: authError.status });
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAdmin(req, { requireSettings: true });
     const body = await req.json();
     const {
       enabled,
@@ -47,6 +62,8 @@ export async function POST(req: NextRequest) {
       notifyInvoices,
       senderTemplate,
       recipientTemplate,
+      webhookVerifyToken,
+      appSecret,
     } = body;
 
     const updatedPartial: Partial<WhatsAppConfig> = {};
@@ -61,9 +78,11 @@ export async function POST(req: NextRequest) {
     if (notifyInvoices !== undefined) updatedPartial.notifyInvoices = Boolean(notifyInvoices);
     if (senderTemplate !== undefined) updatedPartial.senderTemplate = senderTemplate;
     if (recipientTemplate !== undefined) updatedPartial.recipientTemplate = recipientTemplate;
+    if (webhookVerifyToken !== undefined) updatedPartial.webhookVerifyToken = String(webhookVerifyToken).trim();
+    if (appSecret !== undefined) updatedPartial.appSecret = String(appSecret).trim();
 
     const newConfig = WhatsAppService.setConfig(updatedPartial);
-    saveWhatsAppServerConfig(newConfig);
+    await savePersistentWhatsAppServerConfig(newConfig);
 
     return NextResponse.json({
       success: true,
@@ -73,6 +92,8 @@ export async function POST(req: NextRequest) {
         provider: newConfig.provider,
         phoneNumberId: newConfig.phoneNumberId,
         businessAccountId: newConfig.businessAccountId,
+        webhookVerifyToken: newConfig.webhookVerifyToken,
+        webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hispaniolapay.com'}/api/whatsapp/webhook`.replace(/([^:]\/)\/+/, '$1'),
         notifySender: newConfig.notifySender,
         notifyRecipient: newConfig.notifyRecipient,
         notifyInvoices: newConfig.notifyInvoices,
@@ -80,6 +101,10 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
+    const authError = adminAuthError(err);
+    if (authError.status === 401 || String(err?.message || '').includes('FORBIDDEN')) {
+      return NextResponse.json({ success: false, error: authError.message }, { status: authError.status });
+    }
     return NextResponse.json(
       { success: false, error: err.message || 'Error guardando configuración de WhatsApp' },
       { status: 500 }

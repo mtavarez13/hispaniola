@@ -5,6 +5,9 @@ export interface UserProfile {
   name: string;
   email: string;
   role: UserRole;
+  adminLevel?: 'primary' | 'secondary';
+  canAccessSettings?: boolean;
+  canManageAdmins?: boolean;
   country: string;
   walletBalance: number; // Saldo disponible para envíos (USD)
   savingsBalance?: number; // Billetera con ahorro / Bolsillo protegido (USD)
@@ -202,6 +205,8 @@ export interface SystemSettings {
   whatsappNotifyInvoices?: boolean;
   whatsappSenderTemplate?: string;
   whatsappRecipientTemplate?: string;
+  whatsappWebhookVerifyToken?: string;
+  whatsappAppSecret?: string;
 
   // Personalización de Logo y Marca (Admin)
   appLogoUrl?: string;

@@ -54,7 +54,7 @@ export default function SettingsPage() {
   const { toast } = useToast()
 
   const role = userProfile?.role || (user as any)?.role || 'customer'
-  const isAdmin = role === 'admin'
+  const isAdmin = role === 'admin' && userProfile?.canAccessSettings !== false
 
   // BenCash API State
   const [bencashBaseUrl, setBencashBaseUrl] = useState("")
@@ -74,6 +74,8 @@ export default function SettingsPage() {
   const [waToken, setWaToken] = useState("")
   const [waPhoneId, setWaPhoneId] = useState("")
   const [waBusinessId, setWaBusinessId] = useState("")
+  const [waWebhookVerifyToken, setWaWebhookVerifyToken] = useState("")
+  const [waAppSecret, setWaAppSecret] = useState("")
   const [waNotifySender, setWaNotifySender] = useState(true)
   const [waNotifyRecipient, setWaNotifyRecipient] = useState(true)
   const [waNotifyInvoices, setWaNotifyInvoices] = useState(true)
@@ -99,6 +101,8 @@ export default function SettingsPage() {
       setWaToken(settings.whatsappApiToken || "")
       setWaPhoneId(settings.whatsappPhoneNumberId || "")
       setWaBusinessId(settings.whatsappBusinessAccountId || "")
+      setWaWebhookVerifyToken(settings.whatsappWebhookVerifyToken || "")
+      setWaAppSecret(settings.whatsappAppSecret || "")
       setWaNotifySender(settings.whatsappNotifySender ?? true)
       setWaNotifyRecipient(settings.whatsappNotifyRecipient ?? true)
       setWaNotifyInvoices(settings.whatsappNotifyInvoices ?? true)
@@ -112,13 +116,15 @@ export default function SettingsPage() {
     const cleanToken = waToken.trim()
     const cleanPhoneId = waPhoneId.trim()
     const cleanBusinessId = waBusinessId.trim()
+    const cleanWebhookVerifyToken = waWebhookVerifyToken.trim()
+    const cleanAppSecret = waAppSecret.trim()
 
-    if (waEnabled && (!cleanToken || !cleanPhoneId || !cleanBusinessId)) {
+    if (waEnabled && (!cleanToken || !cleanPhoneId || !cleanBusinessId || !cleanWebhookVerifyToken)) {
       setSavingWa(false)
       toast({
         variant: "destructive",
         title: "Credenciales WABA incompletas",
-        description: "Ingresa WABA ID, Phone Number ID y el token permanente de Meta.",
+        description: "Ingresa WABA ID, Phone Number ID, token permanente y token de verificación del webhook.",
       })
       return
     }
@@ -131,6 +137,8 @@ export default function SettingsPage() {
         whatsappApiToken: cleanToken,
         whatsappPhoneNumberId: cleanPhoneId,
         whatsappBusinessAccountId: cleanBusinessId,
+        whatsappWebhookVerifyToken: cleanWebhookVerifyToken,
+        whatsappAppSecret: cleanAppSecret,
         whatsappNotifySender: waNotifySender,
         whatsappNotifyRecipient: waNotifyRecipient,
         whatsappNotifyInvoices: waNotifyInvoices,
@@ -141,15 +149,18 @@ export default function SettingsPage() {
 
     // 2. Sincronizar en el servidor runtime Next.js
     try {
+      const idToken = await user?.getIdToken()
       await fetch("/api/whatsapp/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           enabled: waEnabled,
           provider: waProvider,
           apiToken: cleanToken,
           phoneNumberId: cleanPhoneId,
           businessAccountId: cleanBusinessId,
+          webhookVerifyToken: cleanWebhookVerifyToken,
+          appSecret: cleanAppSecret,
           notifySender: waNotifySender,
           notifyRecipient: waNotifyRecipient,
           notifyInvoices: waNotifyInvoices,
@@ -257,9 +268,10 @@ export default function SettingsPage() {
 
     // 2. Sincronizar directamente con el endpoint de configuración del servidor Next.js
     try {
+      const idToken = await user?.getIdToken()
       await fetch("/api/bencash/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ baseUrl: cleanUrl, privateKey: cleanKey }),
       })
     } catch (err) {
@@ -361,7 +373,7 @@ export default function SettingsPage() {
               Acceso Restringido: Exclusivo de Administrador
             </CardTitle>
             <CardDescription className="text-sm text-slate-600 max-w-md mx-auto mt-2">
-              Los usuarios con rol <strong>{role === "customer" ? "Cliente" : "Sub-Agente"}</strong> no tienen acceso a claves API ni a configuraciones técnicas del sistema.
+              Esta cuenta no tiene acceso a claves API ni a configuraciones técnicas del sistema. Los administradores secundarios están limitados a módulos operativos.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 pt-4">
@@ -748,6 +760,10 @@ export default function SettingsPage() {
             setWaPhoneId={setWaPhoneId}
             waBusinessId={waBusinessId}
             setWaBusinessId={setWaBusinessId}
+            waWebhookVerifyToken={waWebhookVerifyToken}
+            setWaWebhookVerifyToken={setWaWebhookVerifyToken}
+            waAppSecret={waAppSecret}
+            setWaAppSecret={setWaAppSecret}
             waNotifySender={waNotifySender}
             setWaNotifySender={setWaNotifySender}
             waNotifyRecipient={waNotifyRecipient}

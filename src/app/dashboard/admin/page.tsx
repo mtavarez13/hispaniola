@@ -180,9 +180,10 @@ export default function AdminPage() {
     )
 
     try {
+      const idToken = await user?.getIdToken()
       await fetch("/api/bencash/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ baseUrl: cleanUrl, privateKey: cleanKey }),
       })
     } catch (e) {

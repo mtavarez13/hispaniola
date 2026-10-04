@@ -28,8 +28,18 @@ service cloud.firestore {
     match /partner_transfers/{transferId} {
       allow read, write: if true;
     }
+    // Solo el backend con Firebase Admin puede leer o escribir estas colecciones.
+    match /whatsapp_messages/{messageId} {
+      allow read, write: if false;
+    }
+    match /whatsapp_delivery_status/{messageId} {
+      allow read, write: if false;
+    }
+    match /server_config/{configId} {
+      allow read, write: if false;
+    }
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

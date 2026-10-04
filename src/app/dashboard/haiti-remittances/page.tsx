@@ -64,6 +64,7 @@ export default function HaitiRemittancesPage() {
 
   const role = userProfile?.role || (user as any)?.role || "customer"
   const isAdmin = role === "admin"
+  const canAccessSettings = isAdmin && userProfile?.canAccessSettings !== false
 
   const [activeTab, setActiveTab] = useState("terminal")
   const [loading, setLoading] = useState(false)
@@ -81,10 +82,10 @@ export default function HaitiRemittancesPage() {
 
   // Restrict: Non-admin users cannot access API config tab
   useEffect(() => {
-    if (!isAdmin && activeTab === "config") {
+    if (!canAccessSettings && activeTab === "config") {
       setActiveTab("terminal")
     }
-  }, [isAdmin, activeTab])
+  }, [canAccessSettings, activeTab])
 
   // API Config State
   const [baseUrlInput, setBaseUrlInput] = useState(settings?.bencashBaseUrl || "")
@@ -981,11 +982,11 @@ export default function HaitiRemittancesPage() {
           moncashActive: true,
           natcashActive: true,
         }),
-        fetch("/api/bencash/config", {
+        user?.getIdToken().then((idToken) => fetch("/api/bencash/config", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
           body: JSON.stringify({ baseUrl: cleanUrl, privateKey: cleanKey || undefined }),
-        }),
+        })),
       ])
       const serverData = await serverResponse.json()
 
@@ -1284,7 +1285,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
         </Card>
 
         {/* Gateway Security Card - Exclusivo para Administrador */}
-        {isAdmin && (
+        {canAccessSettings && (
           <Card className="border-none shadow-md bg-white overflow-hidden border-t-4 border-t-emerald-600">
             <CardContent className="p-5 flex items-center justify-between">
               <div className="space-y-1">
@@ -1309,14 +1310,14 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
 
       {/* Main Tabs Container */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className={`bg-white p-1 border border-border rounded-xl grid ${isAdmin ? "grid-cols-3 max-w-lg" : "grid-cols-2 max-w-sm"} shadow-sm`}>
+        <TabsList className={`bg-white p-1 border border-border rounded-xl grid ${canAccessSettings ? "grid-cols-3 max-w-lg" : "grid-cols-2 max-w-sm"} shadow-sm`}>
           <TabsTrigger value="terminal" className="gap-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-white">
             <Smartphone className="w-4 h-4" /> Terminal de Envío
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-white">
             <Layers className="w-4 h-4" /> Historial ({transactions.length})
           </TabsTrigger>
-          {isAdmin && (
+          {canAccessSettings && (
             <TabsTrigger value="config" className="gap-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-white">
               <Key className="w-4 h-4" /> Configuración API
             </TabsTrigger>
@@ -2170,7 +2171,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
             <div className="lg:col-span-5 space-y-6">
               
               {/* BenCash Specs Card - Exclusivo para Administradores */}
-              {isAdmin && (
+              {canAccessSettings && (
                 <Card className="border-none shadow-md bg-white">
                   <CardHeader className="pb-3 border-b border-border">
                     <CardTitle className="text-sm font-bold text-primary flex items-center gap-2">
@@ -2507,7 +2508,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
         </TabsContent>
 
         {/* TAB 3: CONFIGURACION API BENCASH */}
-        {isAdmin && (
+        {canAccessSettings && (
           <TabsContent value="config" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             

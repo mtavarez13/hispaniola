@@ -15,6 +15,8 @@ import {
   MailCheck,
   PiggyBank,
   Terminal,
+  MessageSquare,
+  UserCog,
 } from "lucide-react"
 
 import Link from "next/link"
@@ -27,11 +29,14 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { useI18n } from "@/lib/i18n/context"
+import type { UserProfile } from "@/lib/types"
 
-export function NavMain({ role }: { role: string }) {
+export function NavMain({ user }: { user: UserProfile }) {
   const { t } = useI18n();
   const { setOpenMobile, isMobile } = useSidebar();
+  const role = user.role;
   const isAdmin = role === 'admin';
+  const canAccessSettings = isAdmin && user.canAccessSettings !== false;
 
   const menuItems = [
     {
@@ -113,10 +118,22 @@ export function NavMain({ role }: { role: string }) {
       show: isAdmin,
     },
     {
+      title: "Bandeja WhatsApp",
+      icon: MessageSquare,
+      url: "/dashboard/whatsapp-inbox",
+      show: isAdmin,
+    },
+    {
+      title: "Administradores",
+      icon: UserCog,
+      url: "/dashboard/admin-users",
+      show: canAccessSettings,
+    },
+    {
       title: t('sidebar_settings'),
       icon: Settings,
       url: "/dashboard/settings",
-      show: isAdmin,
+      show: canAccessSettings,
     },
   ]
 

@@ -11,6 +11,8 @@ export interface WhatsAppConfig {
   apiToken: string;
   phoneNumberId: string;
   businessAccountId?: string;
+  webhookVerifyToken?: string;
+  appSecret?: string;
   notifySender: boolean;
   notifyRecipient: boolean;
   notifyInvoices: boolean;
@@ -44,6 +46,8 @@ let runtimeWhatsAppConfig: WhatsAppConfig = {
   apiToken: process.env.WHATSAPP_API_TOKEN || '',
   phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
   businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+  webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
+  appSecret: process.env.WHATSAPP_APP_SECRET || '',
   notifySender: true,
   notifyRecipient: true,
   notifyInvoices: true,

@@ -117,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const cachedKey = `hispaniolapay_profile_${firebaseUser.uid}`;
     const cleanEmail = (firebaseUser.email || "").toLowerCase().trim();
+    const isPrimaryAdmin = cleanEmail === "martin.tavarez.gomez@gmail.com";
 
     const computedRole: UserRole =
       extraData?.role ||
@@ -135,6 +136,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (computedRole === "admin" && existingProfile.role !== "admin") {
           existingProfile.role = "admin";
         }
+        if (isPrimaryAdmin) {
+          existingProfile.adminLevel = "primary";
+          existingProfile.canAccessSettings = true;
+          existingProfile.canManageAdmins = true;
+        }
         setUserProfile(existingProfile);
       }
     } catch (_) {}
@@ -151,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "Usuario",
       email: cleanEmail,
       role: computedRole,
+      ...(isPrimaryAdmin ? { adminLevel: "primary" as const, canAccessSettings: true, canManageAdmins: true } : {}),
       country: extraData?.country || (cleanEmail.endsWith(".ht") ? "HT" : "DO"),
       walletBalance: 0.00,
       savingsBalance: 0.00,
@@ -175,6 +182,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (computedRole === "admin" && data.role !== "admin") {
           data.role = "admin";
         }
+        if (isPrimaryAdmin) {
+          data.adminLevel = "primary";
+          data.canAccessSettings = true;
+          data.canManageAdmins = true;
+        }
         // Ensure clientCode, walletBalance & savings exist
         if (!data.clientCode) data.clientCode = generatedCode;
         if (data.walletBalance === undefined) data.walletBalance = 0.00;
@@ -193,6 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             "Usuario",
           email: cleanEmail,
           role: computedRole,
+          ...(isPrimaryAdmin ? { adminLevel: "primary" as const, canAccessSettings: true, canManageAdmins: true } : {}),
           country: extraData?.country || (cleanEmail.endsWith(".ht") ? "HT" : "DO"),
           walletBalance: 0.00,
           savingsBalance: 0.00,

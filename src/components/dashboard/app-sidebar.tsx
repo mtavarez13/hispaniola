@@ -38,7 +38,7 @@ export function AppSidebar({ user, className, ...props }: { user: UserProfile } 
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="bg-white">
-        <NavMain role={user.role} />
+        <NavMain user={user} />
       </SidebarContent>
       <SidebarFooter className="bg-white border-t border-slate-100">
         <SidebarMenu>

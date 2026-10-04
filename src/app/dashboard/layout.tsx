@@ -156,10 +156,10 @@ export default function DashboardLayout({
                    </div>
                  </DropdownMenuLabel>
                  <DropdownMenuSeparator />
-                 <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+                 {currentProfile.canAccessSettings !== false && <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
                    <User className="mr-2 h-4 w-4" />
                    <span>Perfil y Configuración</span>
-                 </DropdownMenuItem>
+                 </DropdownMenuItem>}
                  <DropdownMenuSeparator />
                  <DropdownMenuItem onClick={() => logout().then(() => router.push("/"))} className="text-destructive focus:text-destructive">
                    <LogOut className="mr-2 h-4 w-4" />
