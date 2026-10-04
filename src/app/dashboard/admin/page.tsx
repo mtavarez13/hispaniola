@@ -215,10 +215,15 @@ export default function AdminPage() {
       const data = await res.json()
       setPingResult(data)
 
-      if (data.reachable) {
+      if (data.success) {
         toast({
           title: "Ping Exitoso a BenCash API",
           description: `Servidor conectado (${data.latencyMs}ms). Código HTTP: ${data.httpStatus}`,
+        })
+      } else if (data.reachable) {
+        toast({
+          title: "Conexión parcial a BenCash",
+          description: data.message || "El servidor está en línea, pero el canal no confirmó la operación.",
         })
       } else {
         toast({
@@ -1320,20 +1325,22 @@ export default function AdminPage() {
               {/* Ping Result Box */}
               {pingResult && (
                 <div className={`p-4 rounded-xl border space-y-3 transition-all ${
-                  pingResult.reachable 
+                  pingResult.success
                     ? "bg-emerald-50/70 border-emerald-200 text-emerald-950" 
-                    : "bg-red-50/70 border-red-200 text-red-950"
+                    : pingResult.reachable
+                      ? "bg-amber-50/70 border-amber-200 text-amber-950"
+                      : "bg-red-50/70 border-red-200 text-red-950"
                 }`}>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2 border-emerald-200/50">
                     <div className="flex items-center gap-2">
-                      {pingResult.reachable ? (
+                      {pingResult.success ? (
                         <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                       ) : (
                         <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
                       )}
                       <div>
                         <div className="font-bold text-sm">
-                          {pingResult.reachable ? "Servidor BenCash En Línea" : "Fallo al comunicar con Endpoint"}
+                          {pingResult.success ? "Canal BenCash autenticado" : pingResult.reachable ? "Servidor en línea; canal sin confirmar" : "Fallo al comunicar con Endpoint"}
                         </div>
                         <div className="text-[11px] opacity-80">
                           {pingResult.endpoint}
@@ -1342,7 +1349,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Badge className={pingResult.reachable ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}>
+                      <Badge className={pingResult.success ? "bg-emerald-600 text-white" : pingResult.reachable ? "bg-amber-500 text-white" : "bg-red-600 text-white"}>
                         HTTP {pingResult.httpStatus || "ERR"} {pingResult.statusText}
                       </Badge>
                       <Badge variant="outline" className="font-mono font-bold bg-white text-xs">

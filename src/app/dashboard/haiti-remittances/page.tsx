@@ -1028,10 +1028,15 @@ export default function HaitiRemittancesPage() {
       })
       const data = await res.json()
       setTestResult(data)
-      if (data.reachable) {
+      if (data.success) {
         toast({
           title: "Ping Exitoso a BenCash API",
           description: `Servidor conectado (${data.latencyMs}ms). Código HTTP: ${data.httpStatus}`,
+        })
+      } else if (data.reachable) {
+        toast({
+          title: "Conexión parcial a BenCash",
+          description: data.message || "El servidor está en línea, pero el canal no confirmó la operación.",
         })
       } else {
         toast({
@@ -2686,14 +2691,16 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                     <div className="flex justify-between items-center text-slate-400 border-b border-slate-700 pb-1">
                       <span>Respuesta de Ping:</span>
                       <Badge className={
-                        (testResult.success && testResult.reachable) ||
+                        testResult.success ||
                         String(testResult.details?.channelResponseBody?.resultCode || testResult.resultCode) === "200"
                           ? "bg-green-600"
-                          : "bg-red-600"
+                          : testResult.reachable ? "bg-amber-500" : "bg-red-600"
                       }>
-                        {(testResult.success && testResult.reachable)
+                        {testResult.success
                           ? "ÉXITO"
-                          : (testResult.details?.channelResponseBody?.resultCode || testResult.resultCode || "ERROR")}
+                          : testResult.reachable
+                            ? "PARCIAL"
+                            : (testResult.details?.channelResponseBody?.resultCode || testResult.resultCode || "ERROR")}
                       </Badge>
                     </div>
                     <pre className="text-[10px] text-emerald-400">

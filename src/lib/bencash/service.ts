@@ -115,7 +115,9 @@ export interface PingDiagnosticResult {
     channelStatus?: number | null;
     channelStatusText?: string;
     channelResponseBody?: any;
+    channelError?: string;
     swaggerStatus?: number | null;
+    swaggerError?: string;
     rootStatus?: number | null;
     rootStatusText?: string;
   };
@@ -1138,7 +1140,7 @@ export class BencashDepositService {
     const startTime = Date.now();
     const rawBaseUrl = (options?.baseUrl || this.baseUrl || 'https://reseller.test.bencashgroup.com').trim();
     const key = options?.privateKey || this.privateKey;
-    const timeoutMs = options?.timeoutMs || 8000;
+    const timeoutMs = options?.timeoutMs || 15000;
 
     // Obtiene la URL del endpoint real de canal con /api/channel/requestcashin
     const channelEndpoint = resolveChannelEndpoint(rawBaseUrl, 'requestcashin');
@@ -1151,27 +1153,26 @@ export class BencashDepositService {
     const originUrl = new URL(channelEndpoint).origin;
     const swaggerEndpoint = `${originUrl}/swagger/index.html`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const fetchWithTimeout = async (url: string, init: RequestInit, limitMs: number) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), limitMs);
+      try {
+        return await fetch(url, { ...init, signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
     try {
       // Paso 1: Comprobar el endpoint de documentación Swagger (siempre devuelve 200 si el servidor está en línea)
       let swaggerStatus: number | null = null;
-      try {
-        const swRes = await fetch(swaggerEndpoint, {
-          method: 'GET',
-          signal: controller.signal,
-          headers: { 'User-Agent': 'HispaniolaPay-Probe/1.0' },
-        });
-        swaggerStatus = swRes.status;
-      } catch (err: any) {
-        console.warn('Swagger probe note:', err.message);
-      }
+      let swaggerError = '';
 
       // Paso 2: Probar el endpoint real del Canal (/api/channel/requestcashin)
       let channelStatus: number | null = null;
       let channelStatusText = '';
       let channelResponseBody: any = null;
+      let channelError = '';
 
       const requestId = generateUniqueRequestId();
       const timestamp = Date.now();
@@ -1202,35 +1203,56 @@ export class BencashDepositService {
         }
       }
 
-      try {
-        const channelRes = await fetch(channelEndpoint, {
-          method: 'POST',
-          signal: controller.signal,
-          headers,
-          body: JSON.stringify({
-            requestId,
-            toAccountNumber: '50940885084',
-            amount: 1,
-            content: pingContent,
-            timestamp,
-            signature,
-          }),
-        });
+      // Las dos pruebas usan temporizadores independientes. Así una respuesta lenta de
+      // Swagger no cancela la comprobación transaccional del canal.
+      await Promise.all([
+        (async () => {
+          try {
+            const swRes = await fetchWithTimeout(
+              swaggerEndpoint,
+              { method: 'GET', headers: { 'User-Agent': 'HispaniolaPay-Probe/1.0' } },
+              Math.min(timeoutMs, 8000)
+            );
+            swaggerStatus = swRes.status;
+          } catch (err: any) {
+            swaggerError = err?.name === 'AbortError' ? 'Swagger timeout' : (err?.message || 'Swagger connection error');
+            console.warn('Swagger probe note:', swaggerError);
+          }
+        })(),
+        (async () => {
+          try {
+            const channelRes = await fetchWithTimeout(
+              channelEndpoint,
+              {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                  requestId,
+                  toAccountNumber: '50940885084',
+                  amount: 1,
+                  content: pingContent,
+                  timestamp,
+                  signature,
+                }),
+              },
+              timeoutMs
+            );
 
-        channelStatus = channelRes.status;
-        channelStatusText = channelRes.statusText;
+            channelStatus = channelRes.status;
+            channelStatusText = channelRes.statusText;
+            const rawText = await channelRes.text();
+            try {
+              channelResponseBody = JSON.parse(rawText);
+            } catch {
+              channelResponseBody = rawText.slice(0, 300);
+            }
+          } catch (err: any) {
+            channelError = err?.name === 'AbortError' ? `Canal timeout (${timeoutMs}ms)` : (err?.message || 'Channel connection error');
+            console.warn('Channel probe note:', channelError);
+          }
+        })(),
+      ]);
 
-        const rawText = await channelRes.text();
-        try {
-          channelResponseBody = JSON.parse(rawText);
-        } catch {
-          channelResponseBody = rawText.slice(0, 300);
-        }
-      } catch (channelErr: any) {
-        console.warn('Channel probe note:', channelErr.message);
-      }
-
-      clearTimeout(timeoutId);
       const latencyMs = Date.now() - startTime;
 
       // Determinación de alcanzabilidad
@@ -1241,27 +1263,31 @@ export class BencashDepositService {
       let isSuccess = false;
 
       if (channelStatus === 200) {
-        isSuccess = true;
         const code = String(channelResponseBody?.resultCode || '');
         const msg = String(channelResponseBody?.message || '');
+        const result = String(channelResponseBody?.result || '');
 
-        if (code === '200' || channelResponseBody?.result === 'Success' || msg.toLowerCase().includes('success')) {
+        if (code === '200' || result.toLowerCase() === 'success' || msg.toLowerCase() === 'success') {
+          isSuccess = true;
           explanation = `¡Conexión y Autenticación 100% Exitosas (${latencyMs}ms)! Servidor BenCash en línea y transacción de prueba procesada correctamente.`;
         } else if (msg.toLowerCase().includes('requestid duplicated')) {
+          isSuccess = true;
           explanation = `¡Servidor Kestrel Conectado (HTTP 200 en ${latencyMs}ms)! El endpoint /api/channel/requestcashin está activo. Nota: BenCash indicó que el RequestId anterior ya fue registrado en su base de datos. Se ha generado un nuevo identificador único.`;
         } else if (code === '503' && (msg.toLowerCase().includes('privatekey') || msg.toLowerCase().includes('signature') || msg.toLowerCase().includes('accesskey') || !key)) {
+          isSuccess = false;
           explanation = `¡Servidor Kestrel Conectado (HTTP 200 en ${latencyMs}ms)! El endpoint /api/channel/requestcashin está activo y procesando firmas HMAC. Nota: Bencash respondió con resultCode 503 ("${msg || 'Invalid PrivateKey'}") debido a que la Clave Privada no coincide con una cuenta activa en sellertest.bencashgroup.com. Guarda tu Private Key oficial para activar transacciones reales.`;
         } else {
-          explanation = `Servidor BenCash conectado exitosamente (HTTP 200 en ${latencyMs}ms). Respuesta: ${typeof channelResponseBody === 'object' ? JSON.stringify(channelResponseBody) : channelResponseBody}`;
+          isSuccess = false;
+          explanation = `Servidor BenCash en línea y canal accesible (HTTP 200 en ${latencyMs}ms), pero la operación de prueba no fue aceptada. Respuesta: ${typeof channelResponseBody === 'object' ? JSON.stringify(channelResponseBody) : channelResponseBody}`;
         }
-      } else if (swaggerStatus === 200) {
-        isSuccess = true;
-        explanation = `Servidor BenCash en línea (Swagger OK en ${latencyMs}ms). El endpoint del canal respondió HTTP ${channelStatus || 'N/A'}.`;
       } else if (channelStatus === 404) {
         isSuccess = false;
         explanation = `Ruta no encontrada (HTTP 404). Asegúrese de utilizar la ruta con prefijo /api/channel/requestcashin en lugar de /channel/requestcashin.`;
+      } else if (swaggerStatus === 200) {
+        isSuccess = false;
+        explanation = `Servidor BenCash en línea, pero el canal transaccional no confirmó la operación${channelError ? `: ${channelError}` : ` (HTTP ${channelStatus ?? 'N/A'})`}. Intente nuevamente; si persiste, revise la clave privada o contacte a BenCash.`;
       } else if (isReachable) {
-        isSuccess = true;
+        isSuccess = false;
         explanation = `Servidor conectado (${latencyMs}ms). Estado HTTP: ${channelStatus || swaggerStatus}`;
       } else {
         isSuccess = false;
@@ -1275,7 +1301,7 @@ export class BencashDepositService {
         channelEndpoint,
         swaggerEndpoint,
         latencyMs,
-        httpStatus: channelStatus || swaggerStatus || 200,
+        httpStatus: channelStatus ?? swaggerStatus ?? 503,
         statusText: channelStatusText || (swaggerStatus === 200 ? 'OK' : 'Unknown'),
         message: explanation,
         timestamp: new Date().toISOString(),
@@ -1284,13 +1310,14 @@ export class BencashDepositService {
           channelStatus,
           channelStatusText,
           channelResponseBody,
+          channelError,
           swaggerStatus,
+          swaggerError,
           rootStatus: swaggerStatus,
           rootStatusText: 'Swagger API Documented',
         },
       };
     } catch (err: any) {
-      clearTimeout(timeoutId);
       const latencyMs = Date.now() - startTime;
       const isTimeout = err.name === 'AbortError';
 

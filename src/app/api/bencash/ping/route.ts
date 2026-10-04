@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const diagnostic = await service.ping({
     baseUrl: targetUrl,
     privateKey,
-    timeoutMs: 8000,
+    timeoutMs: 15000,
   });
 
   return NextResponse.json(diagnostic, { status: 200 });
