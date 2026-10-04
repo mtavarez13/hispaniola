@@ -45,12 +45,40 @@ final class ApiClient {
         return response;
     }
 
+    JSONObject loginWithGoogle(String googleIdToken) throws Exception {
+        String postBody = "id_token=" + URLEncoder.encode(googleIdToken, "UTF-8") + "&providerId=google.com";
+        JSONObject payload = new JSONObject()
+                .put("postBody", postBody)
+                .put("requestUri", "https://studio-4779362907-870c5.firebaseapp.com/__/auth/handler")
+                .put("returnSecureToken", true)
+                .put("returnIdpCredential", true);
+        JSONObject response = request(
+                "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=" + BuildConfig.FIREBASE_API_KEY,
+                "POST", payload, null, 25000);
+        saveTokens(response.optString("idToken"), response.optString("refreshToken"), response.optLong("expiresIn", 3600));
+        return response;
+    }
+
     JSONObject account() throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/account", "GET", null, 25000);
     }
 
     JSONObject sendRemittance(JSONObject payload) throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances", "POST", payload, 65000);
+    }
+
+    JSONObject notifications() throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/notifications", "GET", null, 25000);
+    }
+
+    JSONObject markNotificationsRead(String notificationId) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/notifications", "PATCH",
+                new JSONObject().put("notificationId", notificationId == null ? "" : notificationId), 25000);
+    }
+
+    JSONObject registerDeviceToken(String token) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/device-token", "POST",
+                new JSONObject().put("token", token).put("appVersion", BuildConfig.VERSION_NAME), 25000);
     }
 
     private JSONObject authorizedRequest(String url, String method, JSONObject payload, int timeout) throws Exception {

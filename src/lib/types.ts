@@ -26,7 +26,7 @@ export interface ClientDepositRecord {
   amount: number; // Monto entregado por el cliente
   currency: 'USD' | 'DOP';
   amountCreditedUSD: number; // Monto neto acreditado a la billetera en USD
-  method: 'sub_agent' | 'bank_transfer';
+  method: 'sub_agent' | 'bank_transfer' | 'admin_manual';
   subAgentId?: string; // SA-101, etc.
   subAgentName?: string;
   subAgentLocation?: string;
@@ -44,7 +44,7 @@ export interface ClientDepositRecord {
 export interface ClientWalletMovement {
   id: string; // e.g. "MOV-1029"
   clientId: string;
-  type: 'deposit_sub_agent' | 'deposit_bank' | 'transfer_to_savings' | 'withdraw_from_savings' | 'remittance_moncash' | 'remittance_natcash';
+  type: 'deposit_sub_agent' | 'deposit_bank' | 'admin_credit' | 'transfer_to_savings' | 'withdraw_from_savings' | 'remittance_moncash' | 'remittance_natcash';
   title: string;
   description: string;
   amountUSD: number;

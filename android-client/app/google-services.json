@@ -1,0 +1,36 @@
+{
+  "project_info": {
+    "project_number": "468788303839",
+    "firebase_url": "https://studio-4779362907-870c5-default-rtdb.firebaseio.com",
+    "project_id": "studio-4779362907-870c5",
+    "storage_bucket": "studio-4779362907-870c5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:468788303839:android:e0192e4419c13ff607966a",
+        "android_client_info": { "package_name": "com.hispaniolapay.mobile" }
+      },
+      "oauth_client": [
+        {
+          "client_id": "468788303839-44k75qgv3mhd7afnd2m5k6o2fb2vng6b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hispaniolapay.mobile",
+            "certificate_hash": "61aacfb1ac764bac69c6dcdf2468ef2341e5101f"
+          }
+        },
+        { "client_id": "468788303839-0qg41gklpc7s22lris4nlhb59e7p975d.apps.googleusercontent.com", "client_type": 3 }
+      ],
+      "api_key": [{ "current_key": "AIzaSyAthRS7bBNNaIeVdvXgw1QU8XADLkgSQSo" }],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            { "client_id": "468788303839-0qg41gklpc7s22lris4nlhb59e7p975d.apps.googleusercontent.com", "client_type": 3 }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

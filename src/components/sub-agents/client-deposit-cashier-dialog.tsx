@@ -119,7 +119,7 @@ export function ClientDepositCashierDialog({
       addClientMovement({
         id: `MOV-${Date.now().toString().slice(-6)}`,
         clientId: depositRecord.clientId,
-        type: "deposit_subagent",
+        type: "deposit_sub_agent",
         title: `Depósito en Sub-Agente (${activeSubAgent?.name})`,
         description: `Recarga en efectivo: ${amount.toLocaleString()} ${currency} (+$${amountCreditedUSD.toFixed(2)} USD acreditados a ${targetPocket === "savings" ? "Ahorro" : "Billetera Principal"})`,
         amountUSD: amountCreditedUSD,

@@ -114,24 +114,46 @@ export function ClientWalletsAdminTab() {
     };
   }, [deposits]);
 
-  const handleApproveDeposit = (depositId: string) => {
-    const result = confirmDepositAndCreditWallet(depositId, user?.email || "Admin General");
-    if (result.success) {
+  const creditOnServer = async (payload: { clientIdentifier: string; amountUSD: number; targetPocket: "main" | "savings"; notes: string; idempotencyKey: string }) => {
+    if (!user) throw new Error("La sesión de administrador no está disponible");
+    const response = await fetch("/api/admin/wallet-credit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || "No se pudo acreditar el saldo");
+    return data;
+  };
+
+  const handleApproveDeposit = async (depositId: string) => {
+    const deposit = deposits.find((item) => item.id === depositId);
+    if (!deposit) return;
+    try {
+      await creditOnServer({
+        clientIdentifier: deposit.clientCode,
+        amountUSD: deposit.amountCreditedUSD,
+        targetPocket: deposit.targetPocket,
+        notes: deposit.notes || `Depósito ${deposit.method === "sub_agent" ? "en sub-agente" : "bancario"}`,
+        idempotencyKey: deposit.id,
+      });
+      const result = confirmDepositAndCreditWallet(depositId, user?.email || "Admin General");
+      if (!result.success) throw new Error(result.message);
       toast({
         title: "¡Depósito Aprobado y Acreditado!",
-        description: `Se acreditó a la billetera del cliente con éxito.`,
+        description: "El saldo fue actualizado y el cliente recibió una notificación.",
       });
       loadData();
-    } else {
+    } catch (error) {
       toast({
         variant: "destructive",
         title: "Error al acreditar",
-        description: result.message,
+        description: error instanceof Error ? error.message : "No se pudo acreditar el depósito",
       });
     }
   };
 
-  const handleDirectCredit = (e: React.FormEvent) => {
+  const handleDirectCredit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientCode.trim()) {
       toast({
@@ -144,7 +166,7 @@ export function ClientWalletsAdminTab() {
 
     setProcessing(true);
     const cleanCode = clientCode.trim().toUpperCase();
-    const depositId = `DEP-ADM-${Date.now().toString().slice(-4)}`;
+    const depositId = `DEP-ADM-${Date.now()}`;
 
     const newRecord: ClientDepositRecord = {
       id: depositId,
@@ -164,7 +186,15 @@ export function ClientWalletsAdminTab() {
       confirmedBy: user?.email || "Super Administrador",
     };
 
-    saveClientDeposit(newRecord);
+    try {
+      await creditOnServer({
+        clientIdentifier: cleanCode,
+        amountUSD: creditAmount,
+        targetPocket,
+        notes: manualNotes.trim() || "Acreditación directa administrativa",
+        idempotencyKey: depositId,
+      });
+      saveClientDeposit(newRecord);
 
     // Add movement
     addClientMovement({
@@ -195,7 +225,6 @@ export function ClientWalletsAdminTab() {
       saveClientWalletBalances(newRecord.clientId, updated);
     } catch (_) {}
 
-    setTimeout(() => {
       setProcessing(false);
       setIsManualCreditOpen(false);
       setClientCode("");
@@ -204,9 +233,12 @@ export function ClientWalletsAdminTab() {
       loadData();
       toast({
         title: "Saldo Acreditado",
-        description: `Se han sumado +$${creditAmount.toFixed(2)} USD a ${cleanCode}.`,
+        description: `Se sumaron +$${creditAmount.toFixed(2)} USD a ${cleanCode} y se notificó al cliente.`,
       });
-    }, 400);
+    } catch (error) {
+      setProcessing(false);
+      toast({ variant: "destructive", title: "No se pudo acreditar", description: error instanceof Error ? error.message : "Error inesperado" });
+    }
   };
 
   return (

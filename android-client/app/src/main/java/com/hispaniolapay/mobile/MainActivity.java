@@ -1,10 +1,16 @@
 package com.hispaniolapay.mobile;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputType;
@@ -21,6 +27,14 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.messaging.FirebaseMessaging;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -32,6 +46,8 @@ import java.util.concurrent.Executors;
 
 /** Cliente nativo. Las credenciales BenCash y la contabilidad permanecen en el servidor. */
 public final class MainActivity extends Activity {
+    private static final int GOOGLE_SIGN_IN = 701;
+    private static final int NOTIFICATION_PERMISSION = 702;
     private static final int NAVY = Color.rgb(8, 34, 75);
     private static final int BLUE = Color.rgb(16, 91, 196);
     private static final int CYAN = Color.rgb(30, 174, 219);
@@ -46,6 +62,7 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final NumberFormat usd = NumberFormat.getCurrencyInstance(Locale.US);
     private ApiClient api;
+    private GoogleSignInClient googleClient;
     private JSONObject accountData;
     private LinearLayout content;
     private String activeScreen = "Inicio";
@@ -56,6 +73,11 @@ public final class MainActivity extends Activity {
         window.setStatusBarColor(NAVY);
         window.setNavigationBarColor(Color.WHITE);
         api = new ApiClient(this);
+        GoogleSignInOptions googleOptions = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(getString(R.string.default_web_client_id)).requestEmail().build();
+        googleClient = GoogleSignIn.getClient(this, googleOptions);
+        createNotificationChannel();
+        requestNotificationPermission();
         if (api.hasSession()) loadAccount(true); else showLogin();
     }
 
@@ -92,6 +114,12 @@ public final class MainActivity extends Activity {
 
         Button login = primaryButton("Iniciar sesión");
         panel.addView(login, params(-1, dp(54), 18));
+        TextView divider = text("────────  o continúa con  ────────", 12, MUTED, Typeface.NORMAL);
+        divider.setGravity(Gravity.CENTER);
+        panel.addView(divider, params(-1, -2, 14));
+        Button google = secondaryButton("G   Continuar con Google");
+        google.setTextColor(INK);
+        panel.addView(google, params(-1, dp(54), 12));
         TextView secure = text("🔒 Acceso protegido con Firebase Authentication", 12, MUTED, Typeface.NORMAL);
         secure.setGravity(Gravity.CENTER);
         panel.addView(secure, params(-1, -2, 14));
@@ -115,7 +143,32 @@ public final class MainActivity extends Activity {
                 }
             });
         });
+        google.setOnClickListener(v -> startActivityForResult(googleClient.getSignInIntent(), GOOGLE_SIGN_IN));
         setContentView(scroll);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != GOOGLE_SIGN_IN) return;
+        Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+        try {
+            GoogleSignInAccount account = task.getResult(ApiException.class);
+            String idToken = account.getIdToken();
+            if (idToken == null || idToken.isEmpty()) throw new IllegalStateException("Google no devolvió una credencial válida");
+            showLoading("Validando tu cuenta de Google…");
+            executor.execute(() -> {
+                try { api.loginWithGoogle(idToken); runOnUiThread(() -> loadAccount(false)); }
+                catch (Exception error) { runOnUiThread(() -> { googleClient.signOut(); showLogin(); errorDialog("No pudimos acceder con Google", friendly(error)); }); }
+            });
+        } catch (Exception error) {
+            errorDialog("Acceso con Google cancelado", "No se completó la selección de la cuenta.");
+        }
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (api != null && api.hasSession() && (intent.getBooleanExtra("openNotifications", false) || "OPEN_NOTIFICATIONS".equals(intent.getAction()))) showNotifications();
     }
 
     private void loadAccount(boolean fullScreen) {
@@ -123,7 +176,7 @@ public final class MainActivity extends Activity {
         executor.execute(() -> {
             try {
                 accountData = api.account();
-                runOnUiThread(this::showHome);
+                runOnUiThread(() -> { syncPushToken(); if (getIntent().getBooleanExtra("openNotifications", false) || "OPEN_NOTIFICATIONS".equals(getIntent().getAction())) { getIntent().removeExtra("openNotifications"); getIntent().setAction(null); showNotifications(); } else showHome(); });
             } catch (Exception error) {
                 runOnUiThread(() -> {
                     if (error instanceof ApiClient.ApiException && ((ApiClient.ApiException) error).statusCode == 401) {
@@ -149,6 +202,8 @@ public final class MainActivity extends Activity {
         actions.addView(space(dp(12), 1));
         actions.addView(actionTile("▣", "Billetera", "Saldo e historial", GREEN, v -> showWallet()), new LinearLayout.LayoutParams(0, dp(132), 1));
         content.addView(actions, params(-1, -2, 10));
+        View alerts = actionTile("●", "Centro de notificaciones", "Depósitos, remesas y avisos de seguridad", AMBER, v -> showNotifications());
+        content.addView(alerts, params(-1, dp(98), 12));
         section("Actividad reciente");
         addRecent(3);
         info("Operaciones protegidas", "Cada envío se valida en el servidor. Ninguna clave del proveedor se guarda en tu teléfono.");
@@ -266,6 +321,54 @@ public final class MainActivity extends Activity {
 
     private void showHistory() { activeScreen = "Historial"; renderShell("Historial", "Tus remesas y referencias recientes"); addRecent(50); }
 
+    private void showNotifications() {
+        activeScreen = "Avisos";
+        showLoading("Cargando tus notificaciones…");
+        executor.execute(() -> {
+            try {
+                JSONObject response = api.notifications();
+                runOnUiThread(() -> renderNotifications(response));
+            } catch (Exception error) {
+                runOnUiThread(() -> { showHome(); errorDialog("No se pudieron cargar los avisos", friendly(error)); });
+            }
+        });
+    }
+
+    private void renderNotifications(JSONObject response) {
+        int unread = response.optInt("unread", 0);
+        renderShell("Notificaciones", unread == 1 ? "Tienes 1 aviso nuevo" : "Tienes " + unread + " avisos nuevos");
+        if (unread > 0) {
+            Button markRead = secondaryButton("Marcar todas como leídas");
+            markRead.setOnClickListener(v -> executor.execute(() -> {
+                try { api.markNotificationsRead(""); runOnUiThread(this::showNotifications); }
+                catch (Exception error) { runOnUiThread(() -> toast(friendly(error))); }
+            }));
+            content.addView(markRead, params(-1, dp(50), 0));
+        }
+        JSONArray items = response.optJSONArray("notifications");
+        if (items == null || items.length() == 0) {
+            info("Todo al día", "Aquí aparecerán tus depósitos acreditados, remesas y avisos importantes.");
+            return;
+        }
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.optJSONObject(i); if (item == null) continue;
+            boolean read = item.optBoolean("read", false);
+            LinearLayout card = card();
+            card.setBackground(round(read ? Color.WHITE : Color.rgb(237, 246, 255), 17, read ? LINE : Color.rgb(160, 204, 250), 1));
+            LinearLayout titleRow = new LinearLayout(this); titleRow.setGravity(Gravity.CENTER_VERTICAL);
+            titleRow.addView(text("deposit".equals(item.optString("type")) ? "+" : "●", 19, "deposit".equals(item.optString("type")) ? GREEN : BLUE, Typeface.BOLD), new LinearLayout.LayoutParams(dp(28), -2));
+            titleRow.addView(text(item.optString("title", "HispaniolaPay"), 15, INK, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1));
+            if (!read) titleRow.addView(text("NUEVO", 10, BLUE, Typeface.BOLD));
+            card.addView(titleRow);
+            card.addView(text(item.optString("body"), 13, MUTED, Typeface.NORMAL), params(-1, -2, 8));
+            String date = item.optString("createdAt");
+            if (!date.isEmpty()) card.addView(text(date.replace('T', ' ').replace("Z", " UTC"), 10, MUTED, Typeface.NORMAL), params(-1, -2, 8));
+            String notificationId = item.optString("id");
+            card.setOnClickListener(v -> executor.execute(() -> { try { api.markNotificationsRead(notificationId); runOnUiThread(this::showNotifications); } catch (Exception ignored) {} }));
+            content.addView(card, params(-1, -2, i == 0 ? 14 : 9));
+        }
+    }
+
     private void showProfile() {
         activeScreen = "Perfil";
         JSONObject account = account();
@@ -282,7 +385,7 @@ public final class MainActivity extends Activity {
         content.addView(refresh, params(-1, dp(54), 14));
         Button logout = secondaryButton("Cerrar sesión");
         logout.setTextColor(RED);
-        logout.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Cerrar sesión").setMessage("¿Deseas salir de HispaniolaPay?").setNegativeButton("Cancelar", null).setPositiveButton("Salir", (d, w) -> { api.logout(); accountData = null; showLogin(); }).show());
+        logout.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Cerrar sesión").setMessage("¿Deseas salir de HispaniolaPay?").setNegativeButton("Cancelar", null).setPositiveButton("Salir", (d, w) -> { googleClient.signOut(); api.logout(); accountData = null; showLogin(); }).show());
         content.addView(logout, params(-1, dp(54), 10));
     }
 
@@ -291,7 +394,7 @@ public final class MainActivity extends Activity {
         LinearLayout header = column(); header.setPadding(dp(21), dp(17), dp(21), dp(17)); header.setBackground(roundGradient(NAVY, BLUE, 0));
         LinearLayout brandRow = new LinearLayout(this); brandRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView logo = text("H", 18, BLUE, Typeface.BOLD); logo.setGravity(Gravity.CENTER); logo.setBackground(round(Color.WHITE, 11, Color.TRANSPARENT, 0));
-        brandRow.addView(logo, new LinearLayout.LayoutParams(dp(38), dp(38))); brandRow.addView(text("  HispaniolaPay", 18, Color.WHITE, Typeface.BOLD)); header.addView(brandRow);
+        brandRow.addView(logo, new LinearLayout.LayoutParams(dp(38), dp(38))); brandRow.addView(text("  HispaniolaPay", 18, Color.WHITE, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1)); TextView bell = text("●", 20, Color.rgb(255, 207, 92), Typeface.BOLD); bell.setGravity(Gravity.CENTER); bell.setContentDescription("Abrir notificaciones"); bell.setOnClickListener(v -> showNotifications()); brandRow.addView(bell, new LinearLayout.LayoutParams(dp(42), dp(38))); header.addView(brandRow);
         header.addView(text(title, 25, Color.WHITE, Typeface.BOLD), params(-1, -2, 17)); header.addView(text(subtitle, 13, Color.rgb(211, 227, 250), Typeface.NORMAL), params(-1, -2, 4)); root.addView(header);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); content = column(); content.setPadding(dp(18), dp(18), dp(18), dp(28)); scroll.addView(content); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(bottomNav(), new LinearLayout.LayoutParams(-1, dp(68))); setContentView(root);
@@ -303,7 +406,30 @@ public final class MainActivity extends Activity {
         nav.addView(navButton("▣", "Billetera", this::showWallet), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("↗", "Enviar", this::showSend), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("≡", "Historial", this::showHistory), new LinearLayout.LayoutParams(0, -1, 1));
+        nav.addView(navButton("●", "Avisos", this::showNotifications), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("●", "Perfil", this::showProfile), new LinearLayout.LayoutParams(0, -1, 1)); return nav;
+    }
+
+    private void syncPushToken() {
+        FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> {
+            getSharedPreferences("hispaniola_push", MODE_PRIVATE).edit().putString("fcmToken", token).apply();
+            executor.execute(() -> { try { api.registerDeviceToken(token); } catch (Exception ignored) {} });
+        });
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            NotificationChannel channel = new NotificationChannel(HispaniolaMessagingService.CHANNEL_ID, "Movimientos de billetera", NotificationManager.IMPORTANCE_HIGH);
+            channel.setDescription("Depósitos y movimientos importantes de HispaniolaPay");
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION);
+        }
     }
 
     private View navButton(String icon, String label, Runnable action) {

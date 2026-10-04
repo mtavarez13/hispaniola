@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { NextRequest } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
 const PRIMARY_ADMIN_EMAILS = new Set(
@@ -33,7 +34,24 @@ export async function requireAuthenticatedUser(req: NextRequest): Promise<Authen
   if (!token) throw new Error('UNAUTHENTICATED');
 
   const decoded = await adminAuth.verifyIdToken(token);
-  const profileSnapshot = await adminDb.collection('users').doc(decoded.uid).get();
+  const profileRef = adminDb.collection('users').doc(decoded.uid);
+  let profileSnapshot = await profileRef.get();
+  if (!profileSnapshot.exists && decoded.email) {
+    await profileRef.set({
+      uid: decoded.uid,
+      email: decoded.email.toLowerCase(),
+      name: decoded.name || decoded.email.split('@')[0],
+      role: 'customer',
+      clientCode: `CLI-${decoded.uid.slice(0, 6).toUpperCase()}`,
+      phone: decoded.phone_number || '',
+      walletBalance: 0,
+      savingsBalance: 0,
+      authProvider: decoded.firebase?.sign_in_provider || 'firebase',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: false });
+    profileSnapshot = await profileRef.get();
+  }
   if (!profileSnapshot.exists) throw new Error('PROFILE_NOT_FOUND');
 
   const profile = (profileSnapshot.data() || {}) as Record<string, unknown>;

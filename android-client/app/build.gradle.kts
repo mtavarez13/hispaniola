@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -10,8 +11,8 @@ android {
         applicationId = "com.hispaniolapay.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0.0-client"
+        versionCode = 4
+        versionName = "2.1.0-client"
 
         val defaultAppUrl = "https://hispaniola--studio-4779362907-870c5.us-east4.hosted.app"
         val appUrl = providers.gradleProperty("HISPANIOLA_APP_URL").orElse(defaultAppUrl).get()
@@ -27,4 +28,10 @@ android {
     buildFeatures {
         buildConfig = true
     }
+}
+
+dependencies {
+    implementation("androidx.core:core:1.15.0")
+    implementation("com.google.firebase:firebase-messaging:24.1.1")
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
 }
