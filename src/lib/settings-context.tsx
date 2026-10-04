@@ -101,11 +101,10 @@ const DEFAULT_SETTINGS: SystemSettings = {
   whatsappApiToken: "",
   whatsappPhoneNumberId: "",
   whatsappBusinessAccountId: "",
-  whatsappGatewayUrl: "",
   whatsappNotifySender: true,
   whatsappNotifyRecipient: true,
   whatsappNotifyInvoices: true,
-  appLogoUrl: "",
+  appLogoUrl: "/branding/hispaniolapay-mark.png",
   appLogoText: "HispaniolaPay",
   officialBankAccounts: DEFAULT_OFFICIAL_BANK_ACCOUNTS,
   usRemittanceAccounts: DEFAULT_US_REMITTANCE_ACCOUNTS,
@@ -174,7 +173,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
               whatsappProvider: cfg.provider || prev.whatsappProvider,
               whatsappPhoneNumberId: cfg.phoneNumberId || prev.whatsappPhoneNumberId,
               whatsappBusinessAccountId: cfg.businessAccountId || prev.whatsappBusinessAccountId,
-              whatsappGatewayUrl: cfg.gatewayUrl || prev.whatsappGatewayUrl,
               whatsappApiToken: cfg.apiToken || prev.whatsappApiToken,
               whatsappNotifySender: cfg.notifySender !== undefined ? cfg.notifySender : prev.whatsappNotifySender,
               whatsappNotifyRecipient: cfg.notifyRecipient !== undefined ? cfg.notifyRecipient : prev.whatsappNotifyRecipient,
@@ -212,9 +210,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
               whatsappPhoneNumberId: (data.whatsappPhoneNumberId !== undefined && data.whatsappPhoneNumberId !== "")
                 ? data.whatsappPhoneNumberId
                 : (prev.whatsappPhoneNumberId || ""),
-              whatsappGatewayUrl: (data.whatsappGatewayUrl !== undefined && data.whatsappGatewayUrl !== "")
-                ? data.whatsappGatewayUrl
-                : (prev.whatsappGatewayUrl || ""),
               // Logo & branding preservation
               appLogoUrl: data.appLogoUrl !== undefined ? data.appLogoUrl : (prev.appLogoUrl || ""),
               appLogoText: data.appLogoText || prev.appLogoText || DEFAULT_SETTINGS.appLogoText,
@@ -287,7 +282,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         newSettings.whatsappApiEnabled !== undefined ||
         newSettings.whatsappApiToken !== undefined ||
         newSettings.whatsappPhoneNumberId !== undefined ||
-        newSettings.whatsappGatewayUrl !== undefined ||
         newSettings.whatsappProvider !== undefined ||
         newSettings.whatsappNotifySender !== undefined ||
         newSettings.whatsappNotifyRecipient !== undefined ||
@@ -302,7 +296,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             apiToken: updated.whatsappApiToken,
             phoneNumberId: updated.whatsappPhoneNumberId,
             businessAccountId: updated.whatsappBusinessAccountId,
-            gatewayUrl: updated.whatsappGatewayUrl,
             notifySender: updated.whatsappNotifySender,
             notifyRecipient: updated.whatsappNotifyRecipient,
             notifyInvoices: updated.whatsappNotifyInvoices,

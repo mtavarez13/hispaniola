@@ -27,23 +27,20 @@ import {
   Globe,
   RefreshCw,
   Sparkles,
-  ShieldCheck,
-  Server
+  ShieldCheck
 } from "lucide-react"
 
 interface WhatsAppSettingsCardProps {
   waEnabled: boolean
   setWaEnabled: (v: boolean) => void
-  waProvider: 'cloud_api' | 'custom_gateway' | 'direct_web'
-  setWaProvider: (v: 'cloud_api' | 'custom_gateway' | 'direct_web') => void
+  waProvider: 'cloud_api' | 'direct_web'
+  setWaProvider: (v: 'cloud_api' | 'direct_web') => void
   waToken: string
   setWaToken: (v: string) => void
   waPhoneId: string
   setWaPhoneId: (v: string) => void
   waBusinessId: string
   setWaBusinessId: (v: string) => void
-  waGatewayUrl: string
-  setWaGatewayUrl: (v: string) => void
   waNotifySender: boolean
   setWaNotifySender: (v: boolean) => void
   waNotifyRecipient: boolean
@@ -77,8 +74,6 @@ export function WhatsAppSettingsCard({
   setWaPhoneId,
   waBusinessId,
   setWaBusinessId,
-  waGatewayUrl,
-  setWaGatewayUrl,
   waNotifySender,
   setWaNotifySender,
   waNotifyRecipient,
@@ -127,6 +122,8 @@ export function WhatsAppSettingsCard({
 • *Estado:* ✅ *Completada / Acreditada*
 
 ⚡ *Tu familia ya tiene el dinero disponible en su teléfono en Haití.*
+🌐 *Consulta y soporte:* https://www.hispaniolapay.com/
+📸 *Instagram:* @hispaniolapay
 _Gracias por utilizar HispaniolaPay - Corredor RD ⇄ Haití._`
 
   const sampleRecipientMessage = `🇭🇹 *HispaniolaPay - Notifikasyon Transfè Lajan*
@@ -134,12 +131,17 @@ Bonjou *Jean Baptiste*! Ou resevwa yon transfè de *1,350.00 HTG* sou kont *MonC
 
 👤 *Moun ki voye l:* Carlos Rodríguez (+1 809-555-0123)
 📋 *Nimewo Referans:* HP-782910
+💵 *Montan voye:* $10.00 USD
+💰 *Montan resevwa:* 1,350.00 HTG
 ⚡ *Estati:* Lajan an disponib imedyatman sou telefòn ou pou w itilize oswa retire li.
 🕒 *Dat:* ${new Date().toLocaleDateString('es-DO')} 12:45 PM
 
 ---
 🇩🇴 *Comprobante en Español:*
-Has recibido *1,350.00 HTG* en tu billetera *MonCash* enviados por *Carlos Rodríguez*. Ref: HP-782910. ¡Fondos listos para uso!`
+Has recibido *1,350.00 HTG* en tu billetera *MonCash* enviados por *Carlos Rodríguez*. Ref: HP-782910. ¡Fondos listos para uso!
+
+🌐 *Consulta y soporte:* https://www.hispaniolapay.com/
+📸 *Instagram:* @hispaniolapay`
 
   const sampleInvoiceMessage = `🧾 *HispaniolaPay - Pago de Servicio Exitoso*
 Estimado(a) *María Santos*, el pago de tu factura ha sido liquidado correctamente.
@@ -250,7 +252,7 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Option 1: Meta Cloud API */}
               <div
                 onClick={() => setWaProvider('cloud_api')}
@@ -270,34 +272,11 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`
                 </div>
                 <div className="font-bold text-sm text-slate-900">Meta Cloud API (Oficial)</div>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Envío directo en segundo plano a los servidores de Meta Graph API v20.0. Oficial y escalable.
+                  Envío directo en segundo plano a Meta WhatsApp Cloud API. Oficial y escalable.
                 </p>
               </div>
 
-              {/* Option 2: Custom Gateway */}
-              <div
-                onClick={() => setWaProvider('custom_gateway')}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  waProvider === 'custom_gateway'
-                    ? 'border-emerald-600 bg-emerald-50/60 shadow-sm ring-1 ring-emerald-600'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700">
-                    <Server className="w-4 h-4" />
-                  </div>
-                  {waProvider === 'custom_gateway' && (
-                    <Badge className="bg-emerald-600 text-white text-[10px]">Seleccionado</Badge>
-                  )}
-                </div>
-                <div className="font-bold text-sm text-slate-900">Gateway / Webhook</div>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Compatible con Evolution API, Baileys, Z-API, Wassenger o servidor WhatsApp propio.
-                </p>
-              </div>
-
-              {/* Option 3: Direct Web Intent */}
+              {/* Option 2: Direct Web Intent */}
               <div
                 onClick={() => setWaProvider('direct_web')}
                 className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
@@ -368,13 +347,13 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`
               </div>
             </div>
 
-            {/* WABA ID (Opcional) */}
+            {/* WABA ID */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="wa-business-id" className="text-xs font-bold text-slate-700">
-                  WhatsApp Business Account ID (WABA)
+                  WhatsApp Business Account ID (WABA) <span className="text-red-500">*</span>
                 </Label>
-                <span className="text-[10px] text-muted-foreground">Opcional</span>
+                <span className="text-[10px] text-muted-foreground">Requerido</span>
               </div>
               <div className="relative">
                 <BuildingIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -442,24 +421,6 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`
               </p>
             </div>
 
-            {/* Gateway URL (Visible si selecciona Custom Gateway) */}
-            {waProvider === 'custom_gateway' && (
-              <div className="space-y-1.5 md:col-span-2 p-3 rounded-lg bg-indigo-50/70 border border-indigo-200">
-                <Label htmlFor="wa-gateway-url" className="text-xs font-bold text-indigo-900">
-                  URL del Webhook / Gateway Propio
-                </Label>
-                <Input
-                  id="wa-gateway-url"
-                  value={waGatewayUrl}
-                  onChange={(e) => setWaGatewayUrl(e.target.value)}
-                  placeholder="https://api.tu-servidor-whatsapp.com/v1/messages"
-                  className="font-mono text-xs bg-white"
-                />
-                <p className="text-[11px] text-indigo-700">
-                  El servidor de HispaniolaPay enviará un POST JSON con el payload de la remesa a este endpoint.
-                </p>
-              </div>
-            )}
           </div>
 
           {/* REGLAS DE AUTOMATIZACIÓN DE MENSAJES */}

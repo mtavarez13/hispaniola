@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
       customMessage,
       apiToken,
       phoneNumberId,
-      gatewayUrl,
       provider = 'cloud_api',
     } = body;
 
@@ -45,6 +44,8 @@ export async function POST(req: NextRequest) {
         senderPhone: '18095550123',
         operator: 'MonCash',
         amountHTG: 1350.0,
+        amountUSD: 10.0,
+        amountDOP: 600.0,
         txId: mockTxId,
       });
     } else if (type === 'invoice') {
@@ -65,8 +66,7 @@ export async function POST(req: NextRequest) {
       messageText,
       token: apiToken,
       phoneNumberId,
-      gatewayUrl,
-      provider,
+      provider: provider === 'direct_web' ? 'direct_web' : 'cloud_api',
     });
 
     return NextResponse.json({

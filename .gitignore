@@ -2,8 +2,6 @@
 
 # dependencies
 /node_modules
-package-lock.json
-npm-shrinkwrap.json
 /.pnp
 .pnp.*
 .yarn/*
@@ -46,3 +44,17 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# local package/repair caches
+/.npm-cache/
+/.lock-restore/
+
+# Android local build artifacts
+/android-client/.android-temp/
+/android-client/.gradle/
+/android-client/.gradle-user/
+/android-client/.manual-build/
+/android-client/.tooling/
+/android-client/**/build/
+/android-client/local.properties
+/android-client/*.log

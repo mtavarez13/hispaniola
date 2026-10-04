@@ -971,29 +971,44 @@ export default function HaitiRemittancesPage() {
   // Save API Config
   const handleSaveConfig = async () => {
     setSavingConfig(true)
-    const success = await updateSettings({
-      bencashBaseUrl: baseUrlInput.trim(),
-      bencashPrivateKey: privateKeyInput.trim(),
-      moncashActive: true,
-      natcashActive: true,
-    })
-    setSavingConfig(false)
+    try {
+      const cleanUrl = (baseUrlInput.trim() || "https://reseller.test.bencashgroup.com").replace(/\/+$/, "")
+      const cleanKey = privateKeyInput.trim()
+      const [settingsSaved, serverResponse] = await Promise.all([
+        updateSettings({
+          bencashBaseUrl: cleanUrl,
+          bencashPrivateKey: cleanKey,
+          moncashActive: true,
+          natcashActive: true,
+        }),
+        fetch("/api/bencash/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseUrl: cleanUrl, privateKey: cleanKey || undefined }),
+        }),
+      ])
+      const serverData = await serverResponse.json()
 
-    if (success) {
+      if (!settingsSaved || !serverResponse.ok || !serverData.success) {
+        throw new Error(serverData.error || "El servidor no confirmó el guardado permanente.")
+      }
+
       toast({
-        title: "Configuración API Guardada",
-        description: "Las credenciales de BenCash han sido actualizadas.",
+        title: "Configuración API guardada permanentemente",
+        description: "La URL y la clave quedarán disponibles después de recargar o cerrar la página.",
       })
       // Refresh status
       fetch("/api/bencash/status")
         .then((res) => res.json())
         .then((data) => setApiStatus(data))
-    } else {
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Error al guardar",
-        description: "No se pudieron actualizar las credenciales.",
+        description: error.message || "No se pudieron actualizar las credenciales.",
       })
+    } finally {
+      setSavingConfig(false)
     }
   }
 
@@ -2669,8 +2684,15 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                   <div className="p-3 rounded-xl bg-slate-900 text-slate-100 font-mono text-[11px] space-y-2 overflow-x-auto">
                     <div className="flex justify-between items-center text-slate-400 border-b border-slate-700 pb-1">
                       <span>Respuesta de Ping:</span>
-                      <Badge className={testResult.resultCode === "200" ? "bg-green-600" : "bg-red-600"}>
-                        {testResult.resultCode || "ERROR"}
+                      <Badge className={
+                        (testResult.success && testResult.reachable) ||
+                        String(testResult.details?.channelResponseBody?.resultCode || testResult.resultCode) === "200"
+                          ? "bg-green-600"
+                          : "bg-red-600"
+                      }>
+                        {(testResult.success && testResult.reachable)
+                          ? "ÉXITO"
+                          : (testResult.details?.channelResponseBody?.resultCode || testResult.resultCode || "ERROR")}
                       </Badge>
                     </div>
                     <pre className="text-[10px] text-emerald-400">

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BencashDepositService } from '@/lib/bencash/service';
-import { getBencashServerConfig, saveBencashServerConfig } from '@/lib/server-config';
+import {
+  getPersistentBencashServerConfig,
+  savePersistentBencashServerConfig,
+} from '@/lib/server-config';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const serverConfig = getBencashServerConfig();
+  const serverConfig = await getPersistentBencashServerConfig();
   const runtime = BencashDepositService.getRuntimeCredentials();
   const currentBaseUrl = runtime.baseUrl || serverConfig.baseUrl || 'https://reseller.test.bencashgroup.com';
   const currentKey = (runtime.privateKey !== null ? runtime.privateKey : serverConfig.privateKey) || '';
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { baseUrl, privateKey } = body;
 
-    const saved = saveBencashServerConfig({
+    const saved = await savePersistentBencashServerConfig({
       baseUrl: typeof baseUrl === 'string' ? baseUrl.trim() : undefined,
       privateKey: typeof privateKey === 'string' ? privateKey.trim() : undefined,
     });
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Configuración de BenCash guardada correctamente y persistida en el servidor',
+      message: 'Configuración de BenCash guardada permanentemente en Firestore',
       baseUrl: saved.baseUrl,
       hasPrivateKey: Boolean(saved.privateKey && saved.privateKey.length > 0),
     });

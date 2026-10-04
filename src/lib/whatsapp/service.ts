@@ -1,18 +1,16 @@
 /**
  * Servicio Central de Integración y Automatización con WhatsApp
  * Soporta:
- * 1. Meta WhatsApp Cloud API Oficial (Graph API v20.0)
- * 2. Gateway / Webhook Personalizado (Evolution API, Baileys, Z-API, Wassenger)
- * 3. Enlaces Directos Universales (WhatsApp Web / App Intent)
+ * 1. Meta WhatsApp Cloud API Oficial (versión configurable)
+ * 2. Enlaces Directos Universales (WhatsApp Web / App Intent)
  */
 
 export interface WhatsAppConfig {
   enabled: boolean;
-  provider: 'cloud_api' | 'custom_gateway' | 'direct_web';
+  provider: 'cloud_api' | 'direct_web';
   apiToken: string;
   phoneNumberId: string;
   businessAccountId?: string;
-  gatewayUrl?: string;
   notifySender: boolean;
   notifyRecipient: boolean;
   notifyInvoices: boolean;
@@ -25,15 +23,14 @@ export interface SendWhatsAppMessageParams {
   messageText: string;
   token?: string;
   phoneNumberId?: string;
-  gatewayUrl?: string;
-  provider?: 'cloud_api' | 'custom_gateway' | 'direct_web';
+  provider?: 'cloud_api' | 'direct_web';
 }
 
 export interface SendWhatsAppResult {
   success: boolean;
   messageId?: string;
   status?: string;
-  providerUsed: 'cloud_api' | 'custom_gateway' | 'direct_web' | 'simulation';
+  providerUsed: 'cloud_api' | 'direct_web' | 'simulation';
   whatsappIntentUrl?: string;
   error?: string;
   details?: any;
@@ -47,7 +44,6 @@ let runtimeWhatsAppConfig: WhatsAppConfig = {
   apiToken: process.env.WHATSAPP_API_TOKEN || '',
   phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
   businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
-  gatewayUrl: process.env.WHATSAPP_GATEWAY_URL || '',
   notifySender: true,
   notifyRecipient: true,
   notifyInvoices: true,
@@ -126,6 +122,8 @@ export class WhatsAppService {
       maximumFractionDigits: 2,
     });
     const dateStr = params.date || new Date().toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo' });
+    const websiteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hispaniolapay.com/';
+    const instagram = process.env.NEXT_PUBLIC_INSTAGRAM_HANDLE || '@hispaniolapay';
 
     return `✅ *HispaniolaPay - Comprobante de Remesa Exitosa*
 ¡Hola *${sender}*! Tu transferencia hacia Haití ha sido procesada y acreditada con éxito.
@@ -139,6 +137,8 @@ ${params.amountUSD ? `• *Monto Enviado:* $${Number(params.amountUSD).toFixed(2
 • *Estado:* ✅ *Completada / Acreditada*
 
 ⚡ *Tu familia ya tiene el dinero disponible en su teléfono en Haití.*
+🌐 *Consulta y soporte:* ${websiteUrl}
+📸 *Instagram:* ${instagram}
 _Gracias por utilizar HispaniolaPay - El corredor financiero inteligente RD ⇄ Haití._`;
   }
 
@@ -151,6 +151,8 @@ _Gracias por utilizar HispaniolaPay - El corredor financiero inteligente RD ⇄ 
     senderPhone?: string;
     operator?: string;
     amountHTG: number | string;
+    amountUSD?: number | string;
+    amountDOP?: number | string;
     txId: string;
     date?: string;
   }): string {
@@ -162,18 +164,24 @@ _Gracias por utilizar HispaniolaPay - El corredor financiero inteligente RD ⇄ 
       maximumFractionDigits: 2,
     });
     const dateStr = params.date || new Date().toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo' });
+    const websiteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hispaniolapay.com/';
+    const instagram = process.env.NEXT_PUBLIC_INSTAGRAM_HANDLE || '@hispaniolapay';
 
     return `🇭🇹 *HispaniolaPay - Notifikasyon Transfè Lajan*
 Bonjou *${recipient}*! Ou resevwa yon transfè de *${formattedHTG} HTG* sou kont *${operator}* ou.
 
 👤 *Moun ki voye l:* ${sender}${params.senderPhone ? ` (+${this.cleanPhoneNumber(params.senderPhone, '1')})` : ''}
 📋 *Nimewo Referans:* ${params.txId}
+${params.amountUSD ? `💵 *Montan voye:* $${Number(params.amountUSD).toFixed(2)} USD\n` : ''}${params.amountDOP ? `💵 *Montan voye:* RD$${Number(params.amountDOP).toLocaleString('en-US', { minimumFractionDigits: 2 })} DOP\n` : ''}💰 *Montan resevwa:* ${formattedHTG} HTG
 ⚡ *Estati:* Lajan an disponib imedyatman sou telefòn ou pou w itilize oswa retire li.
 🕒 *Dat:* ${dateStr}
 
 ---
 🇩🇴 *Comprobante en Español:*
-Has recibido *${formattedHTG} HTG* en tu billetera *${operator}* enviados por *${sender}*. Ref: ${params.txId}. ¡Fondos listos para uso!`;
+Has recibido *${formattedHTG} HTG* en tu billetera *${operator}* enviados por *${sender}*. Ref: ${params.txId}. ¡Fondos listos para uso!
+
+🌐 *Consulta y soporte:* ${websiteUrl}
+📸 *Instagram:* ${instagram}`;
   }
 
   /**
@@ -223,10 +231,9 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`;
     const intentUrl = `https://api.whatsapp.com/send?phone=${cleanTo}&text=${encodeURIComponent(params.messageText)}`;
 
     // Priorizar parámetros específicos o configuración global
-    const provider = params.provider || config.provider || 'cloud_api';
+    const provider = params.provider === 'direct_web' ? 'direct_web' : 'cloud_api';
     const token = (params.token || config.apiToken || '').trim();
     const phoneId = (params.phoneNumberId || config.phoneNumberId || '').trim();
-    const gatewayUrl = (params.gatewayUrl || config.gatewayUrl || '').trim();
 
     // Si la API no está habilitada o faltan credenciales, devolver enlace de Web Intent
     if (!config.enabled && !params.token) {
@@ -251,7 +258,8 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`;
       }
 
       try {
-        const url = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
+        const graphVersion = process.env.WHATSAPP_GRAPH_API_VERSION || 'v24.0';
+        const url = `https://graph.facebook.com/${graphVersion}/${phoneId}/messages`;
         const res = await fetch(url, {
           method: 'POST',
           headers: {
@@ -305,71 +313,7 @@ _HispaniolaPay - Red de Pagos y Remesas RD ⇄ Haití_`;
       }
     }
 
-    // 2. Proveedor Gateway / Webhook Personalizado
-    if (provider === 'custom_gateway') {
-      if (!gatewayUrl) {
-        return {
-          success: false,
-          providerUsed: 'custom_gateway',
-          whatsappIntentUrl: intentUrl,
-          error: 'Falta la URL del Gateway de WhatsApp (WHATSAPP_GATEWAY_URL)',
-        };
-      }
-
-      try {
-        const res = await fetch(gatewayUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            phone: cleanTo,
-            message: params.messageText,
-            timestamp: new Date().toISOString(),
-          }),
-        });
-
-        const latencyMs = Date.now() - startTime;
-        const rawText = await res.text();
-        let parsedData: any = null;
-        try {
-          parsedData = JSON.parse(rawText);
-        } catch {
-          parsedData = { raw: rawText };
-        }
-
-        if (!res.ok) {
-          return {
-            success: false,
-            providerUsed: 'custom_gateway',
-            whatsappIntentUrl: intentUrl,
-            error: parsedData?.message || `Error HTTP ${res.status} del Gateway`,
-            details: parsedData,
-            latencyMs,
-          };
-        }
-
-        return {
-          success: true,
-          status: 'sent',
-          providerUsed: 'custom_gateway',
-          whatsappIntentUrl: intentUrl,
-          details: parsedData,
-          latencyMs,
-        };
-      } catch (err: any) {
-        return {
-          success: false,
-          providerUsed: 'custom_gateway',
-          whatsappIntentUrl: intentUrl,
-          error: err.message || 'Error conectando con el Gateway de WhatsApp',
-          latencyMs: Date.now() - startTime,
-        };
-      }
-    }
-
-    // 3. Fallback: Enlace directo de apertura
+    // 2. Fallback: Enlace directo de apertura
     return {
       success: true,
       providerUsed: 'direct_web',

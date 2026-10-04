@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { adminDb } from '@/lib/firebase-admin';
 
 export interface BencashServerConfig {
   baseUrl: string;
@@ -8,11 +9,10 @@ export interface BencashServerConfig {
 
 export interface WhatsAppServerConfig {
   enabled: boolean;
-  provider: 'cloud_api' | 'custom_gateway' | 'direct_web';
+  provider: 'cloud_api' | 'direct_web';
   apiToken: string;
   phoneNumberId: string;
   businessAccountId?: string;
-  gatewayUrl?: string;
   notifySender: boolean;
   notifyRecipient: boolean;
   notifyInvoices: boolean;
@@ -29,6 +29,8 @@ const FALLBACK_WHATSAPP_FILE = '/tmp/whatsapp_config.json';
 // In-memory runtime caches
 let cachedBencash: BencashServerConfig | null = null;
 let cachedWhatsApp: WhatsAppServerConfig | null = null;
+
+const BENCASH_CONFIG_DOCUMENT = adminDb.collection('server_config').doc('bencash');
 
 /**
  * Obtiene la configuración de BenCash asegurando persistencia en servidor
@@ -97,6 +99,46 @@ export function saveBencashServerConfig(config: Partial<BencashServerConfig>): B
 }
 
 /**
+ * Carga la configuración durable desde Firestore. El archivo local sigue siendo
+ * una caché rápida, pero no es la fuente de verdad porque App Hosting puede
+ * reemplazar la instancia y borrar /tmp en cualquier momento.
+ */
+export async function getPersistentBencashServerConfig(): Promise<BencashServerConfig> {
+  try {
+    const snapshot = await BENCASH_CONFIG_DOCUMENT.get();
+    if (snapshot.exists) {
+      const data = snapshot.data() || {};
+      return saveBencashServerConfig({
+        baseUrl: typeof data.baseUrl === 'string' ? data.baseUrl : undefined,
+        privateKey: typeof data.privateKey === 'string' ? data.privateKey : undefined,
+      });
+    }
+  } catch (error) {
+    console.warn('[ServerConfig] No se pudo leer BenCash desde Firestore; usando caché local:', error);
+  }
+
+  return getBencashServerConfig();
+}
+
+/** Guarda la configuración en Firestore y actualiza las cachés de la instancia. */
+export async function savePersistentBencashServerConfig(
+  config: Partial<BencashServerConfig>
+): Promise<BencashServerConfig> {
+  const updated = saveBencashServerConfig(config);
+
+  await BENCASH_CONFIG_DOCUMENT.set(
+    {
+      baseUrl: updated.baseUrl,
+      privateKey: updated.privateKey,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+
+  return updated;
+}
+
+/**
  * Obtiene la configuración de WhatsApp asegurando persistencia en servidor
  */
 export function getWhatsAppServerConfig(): WhatsAppServerConfig {
@@ -112,11 +154,10 @@ export function getWhatsAppServerConfig(): WhatsAppServerConfig {
         if (parsed && typeof parsed === 'object') {
           cachedWhatsApp = {
             enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
-            provider: parsed.provider || 'cloud_api',
+            provider: parsed.provider === 'direct_web' ? 'direct_web' : 'cloud_api',
             apiToken: (parsed.apiToken || process.env.WHATSAPP_API_TOKEN || '').trim(),
             phoneNumberId: (parsed.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim(),
             businessAccountId: (parsed.businessAccountId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '').trim(),
-            gatewayUrl: (parsed.gatewayUrl || process.env.WHATSAPP_GATEWAY_URL || '').trim(),
             notifySender: parsed.notifySender !== undefined ? Boolean(parsed.notifySender) : true,
             notifyRecipient: parsed.notifyRecipient !== undefined ? Boolean(parsed.notifyRecipient) : true,
             notifyInvoices: parsed.notifyInvoices !== undefined ? Boolean(parsed.notifyInvoices) : true,
@@ -137,7 +178,6 @@ export function getWhatsAppServerConfig(): WhatsAppServerConfig {
     apiToken: (process.env.WHATSAPP_API_TOKEN || '').trim(),
     phoneNumberId: (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim(),
     businessAccountId: (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '').trim(),
-    gatewayUrl: (process.env.WHATSAPP_GATEWAY_URL || '').trim(),
     notifySender: true,
     notifyRecipient: true,
     notifyInvoices: true,

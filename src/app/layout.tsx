@@ -15,6 +15,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'HispaniolaPay | Remesas RD ⇄ Haití: Banreservas, BHD, Popular a MonCash y Natcash',
   description: 'Envía desde Banreservas, Banco BHD y Banco Popular con recepción instantánea en Haití por MonCash y Natcash. Conexión binacional segura y comprobantes térmicos Qik.',
+  icons: {
+    icon: '/branding/hispaniolapay-mark.png',
+    apple: '/branding/hispaniolapay-mark.png',
+  },
 };
 
 export default function RootLayout({

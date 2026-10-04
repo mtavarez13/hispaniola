@@ -193,11 +193,10 @@ export interface SystemSettings {
 
   // WhatsApp Messaging API & Automation
   whatsappApiEnabled?: boolean;
-  whatsappProvider?: 'cloud_api' | 'custom_gateway' | 'direct_web';
+  whatsappProvider?: 'cloud_api' | 'direct_web';
   whatsappApiToken?: string;
   whatsappPhoneNumberId?: string;
   whatsappBusinessAccountId?: string;
-  whatsappGatewayUrl?: string;
   whatsappNotifySender?: boolean;
   whatsappNotifyRecipient?: boolean;
   whatsappNotifyInvoices?: boolean;
@@ -458,7 +457,4 @@ export interface PartnerTransfer {
   completedAt?: string;
   webhookDelivered?: boolean;
 }
-
-
-
 

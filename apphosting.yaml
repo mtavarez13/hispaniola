@@ -7,6 +7,21 @@ runConfig:
   maxInstances: 1
 
 env:
-  - variable: GOOGLE_RUNTIME_VERSION
-    value: "22"
+  - variable: NEXT_PUBLIC_SITE_URL
+    value: https://www.hispaniolapay.com/
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_INSTAGRAM_HANDLE
+    value: "@hispaniolapay"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: WHATSAPP_GRAPH_API_VERSION
+    value: v24.0
+    availability:
+      - RUNTIME
 
+# Antes de habilitar integraciones externas, configure sus claves mediante
+# Secret Manager y referencias `secret:` en este archivo. Nunca incluya las
+# claves directamente en el código ni en este archivo.

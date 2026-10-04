@@ -21,7 +21,6 @@ export async function GET() {
       provider: effectiveConfig.provider,
       phoneNumberId: effectiveConfig.phoneNumberId,
       businessAccountId: effectiveConfig.businessAccountId,
-      gatewayUrl: effectiveConfig.gatewayUrl,
       notifySender: effectiveConfig.notifySender,
       notifyRecipient: effectiveConfig.notifyRecipient,
       notifyInvoices: effectiveConfig.notifyInvoices,
@@ -43,7 +42,6 @@ export async function POST(req: NextRequest) {
       apiToken,
       phoneNumberId,
       businessAccountId,
-      gatewayUrl,
       notifySender,
       notifyRecipient,
       notifyInvoices,
@@ -54,11 +52,10 @@ export async function POST(req: NextRequest) {
     const updatedPartial: Partial<WhatsAppConfig> = {};
 
     if (enabled !== undefined) updatedPartial.enabled = Boolean(enabled);
-    if (provider !== undefined) updatedPartial.provider = provider;
+    if (provider !== undefined) updatedPartial.provider = provider === 'direct_web' ? 'direct_web' : 'cloud_api';
     if (apiToken !== undefined) updatedPartial.apiToken = String(apiToken).trim();
     if (phoneNumberId !== undefined) updatedPartial.phoneNumberId = String(phoneNumberId).trim();
     if (businessAccountId !== undefined) updatedPartial.businessAccountId = String(businessAccountId).trim();
-    if (gatewayUrl !== undefined) updatedPartial.gatewayUrl = String(gatewayUrl).trim();
     if (notifySender !== undefined) updatedPartial.notifySender = Boolean(notifySender);
     if (notifyRecipient !== undefined) updatedPartial.notifyRecipient = Boolean(notifyRecipient);
     if (notifyInvoices !== undefined) updatedPartial.notifyInvoices = Boolean(notifyInvoices);
@@ -76,7 +73,6 @@ export async function POST(req: NextRequest) {
         provider: newConfig.provider,
         phoneNumberId: newConfig.phoneNumberId,
         businessAccountId: newConfig.businessAccountId,
-        gatewayUrl: newConfig.gatewayUrl,
         notifySender: newConfig.notifySender,
         notifyRecipient: newConfig.notifyRecipient,
         notifyInvoices: newConfig.notifyInvoices,
@@ -90,4 +86,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

@@ -1,22 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BencashDepositService } from '@/lib/bencash/service';
+import { getPersistentBencashServerConfig } from '@/lib/server-config';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  let targetUrl = 'https://reseller.test.bencashgroup.com';
-  let privateKey: string | undefined;
+  const savedConfig = await getPersistentBencashServerConfig();
+  let targetUrl = savedConfig.baseUrl || 'https://reseller.test.bencashgroup.com';
+  let privateKey: string | undefined = savedConfig.privateKey || undefined;
 
   try {
     const body = await req.json().catch(() => ({}));
     if (body.baseUrl && typeof body.baseUrl === 'string' && body.baseUrl.trim().length > 0) {
       targetUrl = body.baseUrl.trim();
-    } else if (process.env.BENCASH_BASE_URL) {
+    } else if (!savedConfig.baseUrl && process.env.BENCASH_BASE_URL) {
       targetUrl = process.env.BENCASH_BASE_URL.trim();
     }
     if (body.privateKey && typeof body.privateKey === 'string') {
       privateKey = body.privateKey.trim();
-    } else if (process.env.BENCASH_PRIVATE_KEY) {
+    } else if (!savedConfig.privateKey && process.env.BENCASH_PRIVATE_KEY) {
       privateKey = process.env.BENCASH_PRIVATE_KEY.trim();
     }
   } catch {

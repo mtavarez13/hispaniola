@@ -24,7 +24,7 @@ export function AppLogo({
   const { settings } = useSystemSettings()
   const [imageError, setImageError] = useState(false)
 
-  const logoUrl = settings?.appLogoUrl
+  const logoUrl = settings?.appLogoUrl || "/branding/hispaniolapay-mark.png"
   const brandText = settings?.appLogoText || "HispaniolaPay"
 
   const sizeDimensions = {

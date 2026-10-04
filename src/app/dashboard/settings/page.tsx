@@ -70,11 +70,10 @@ export default function SettingsPage() {
 
   // WhatsApp API & Automation State
   const [waEnabled, setWaEnabled] = useState(false)
-  const [waProvider, setWaProvider] = useState<'cloud_api' | 'custom_gateway' | 'direct_web'>('cloud_api')
+  const [waProvider, setWaProvider] = useState<'cloud_api' | 'direct_web'>('cloud_api')
   const [waToken, setWaToken] = useState("")
   const [waPhoneId, setWaPhoneId] = useState("")
   const [waBusinessId, setWaBusinessId] = useState("")
-  const [waGatewayUrl, setWaGatewayUrl] = useState("")
   const [waNotifySender, setWaNotifySender] = useState(true)
   const [waNotifyRecipient, setWaNotifyRecipient] = useState(true)
   const [waNotifyInvoices, setWaNotifyInvoices] = useState(true)
@@ -96,11 +95,10 @@ export default function SettingsPage() {
       setBencashBaseUrl(settings.bencashBaseUrl || "https://reseller.test.bencashgroup.com")
       setBencashPrivateKey(settings.bencashPrivateKey || "")
       setWaEnabled(settings.whatsappApiEnabled ?? false)
-      setWaProvider(settings.whatsappProvider || 'cloud_api')
+      setWaProvider(settings.whatsappProvider === 'direct_web' ? 'direct_web' : 'cloud_api')
       setWaToken(settings.whatsappApiToken || "")
       setWaPhoneId(settings.whatsappPhoneNumberId || "")
       setWaBusinessId(settings.whatsappBusinessAccountId || "")
-      setWaGatewayUrl(settings.whatsappGatewayUrl || "")
       setWaNotifySender(settings.whatsappNotifySender ?? true)
       setWaNotifyRecipient(settings.whatsappNotifyRecipient ?? true)
       setWaNotifyInvoices(settings.whatsappNotifyInvoices ?? true)
@@ -113,8 +111,17 @@ export default function SettingsPage() {
     setSavingWa(true)
     const cleanToken = waToken.trim()
     const cleanPhoneId = waPhoneId.trim()
-    const cleanGateway = waGatewayUrl.trim()
     const cleanBusinessId = waBusinessId.trim()
+
+    if (waEnabled && (!cleanToken || !cleanPhoneId || !cleanBusinessId)) {
+      setSavingWa(false)
+      toast({
+        variant: "destructive",
+        title: "Credenciales WABA incompletas",
+        description: "Ingresa WABA ID, Phone Number ID y el token permanente de Meta.",
+      })
+      return
+    }
 
     // 1. Guardar en SettingsContext (React state, localStorage, Firestore)
     const success = await updateSettings(
@@ -124,7 +131,6 @@ export default function SettingsPage() {
         whatsappApiToken: cleanToken,
         whatsappPhoneNumberId: cleanPhoneId,
         whatsappBusinessAccountId: cleanBusinessId,
-        whatsappGatewayUrl: cleanGateway,
         whatsappNotifySender: waNotifySender,
         whatsappNotifyRecipient: waNotifyRecipient,
         whatsappNotifyInvoices: waNotifyInvoices,
@@ -144,7 +150,6 @@ export default function SettingsPage() {
           apiToken: cleanToken,
           phoneNumberId: cleanPhoneId,
           businessAccountId: cleanBusinessId,
-          gatewayUrl: cleanGateway,
           notifySender: waNotifySender,
           notifyRecipient: waNotifyRecipient,
           notifyInvoices: waNotifyInvoices,
@@ -197,7 +202,6 @@ export default function SettingsPage() {
           customMessage: testCustomMsg,
           apiToken: waToken.trim(),
           phoneNumberId: waPhoneId.trim(),
-          gatewayUrl: waGatewayUrl.trim(),
           provider: waProvider,
         }),
       })
@@ -744,8 +748,6 @@ export default function SettingsPage() {
             setWaPhoneId={setWaPhoneId}
             waBusinessId={waBusinessId}
             setWaBusinessId={setWaBusinessId}
-            waGatewayUrl={waGatewayUrl}
-            setWaGatewayUrl={setWaGatewayUrl}
             waNotifySender={waNotifySender}
             setWaNotifySender={setWaNotifySender}
             waNotifyRecipient={waNotifyRecipient}
