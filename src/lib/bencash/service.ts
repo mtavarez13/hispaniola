@@ -639,6 +639,9 @@ export class BencashDepositService {
           const headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'skml': activePrivateKey,
+            // BenCash/Kestrel puede cerrar conexiones keep-alive entre API 1 y API 2.
+            // Forzar una conexión nueva evita errores intermitentes "fetch failed".
+            'Connection': 'close',
           };
 
           let candidateAccepted = false;
@@ -812,12 +815,13 @@ export class BencashDepositService {
       } catch (error: any) {
         console.error('Error connecting to Bencash API (requestCashIn):', error);
         const isTimeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+        const networkDetail = error?.cause?.code || error?.cause?.message || error?.message || 'Error de red';
         return {
           resultCode: isTimeout ? '504' : '502',
           resultMessage: isTimeout
             ? 'BenCash no respondió al envío NatCash dentro de 15 segundos. No se reintentó automáticamente para evitar una remesa duplicada.'
-            : `No fue posible conectar con BenCash API: ${error.message}`,
-          message: error?.message,
+            : `No fue posible conectar con BenCash API: ${networkDetail}`,
+          message: networkDetail,
           requestId: activeReqId,
           data: { endpoint, networkError: true, timeout: isTimeout },
         };
@@ -1028,6 +1032,7 @@ export class BencashDepositService {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
           'skml': activePrivateKey,
+          'Connection': 'close',
         };
 
         let lastResponse: any = null;
@@ -1112,11 +1117,13 @@ export class BencashDepositService {
       } catch (err: any) {
         console.error('Error llamando a Bencash confirmcashin:', err);
         const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+        const networkDetail = err?.cause?.code || err?.cause?.message || err?.message || 'Error de red';
         return {
           resultCode: isTimeout ? '504' : '502',
           resultMessage: isTimeout
             ? 'BenCash no respondió a la confirmación dentro de 15 segundos. Consulte el estado antes de reintentar.'
-            : `Fallo de conexión al confirmar depósito: ${err.message || 'Error de red'}`,
+            : `No se pudo verificar la confirmación con BenCash: ${networkDetail}. No vuelva a crear la remesa; conserve el txId y reintente únicamente la confirmación.`,
+          message: networkDetail,
           requestId,
         };
       }

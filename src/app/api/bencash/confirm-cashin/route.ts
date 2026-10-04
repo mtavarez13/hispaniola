@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { executeConfirmCashIn, BencashDepositService } from '@/lib/bencash/service';
-import { getBencashServerConfig, saveBencashServerConfig } from '@/lib/server-config';
+import { getPersistentBencashServerConfig, saveBencashServerConfig } from '@/lib/server-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
     const headerKey = req.headers.get('x-bencash-key') || req.headers.get('skml') || '';
     const headerBaseUrl = req.headers.get('x-bencash-base-url') || '';
-    const serverConfig = getBencashServerConfig();
+    const serverConfig = await getPersistentBencashServerConfig();
 
     const effectivePrivateKey = (privateKey || headerKey || serverConfig.privateKey || process.env.BENCASH_PRIVATE_KEY || '').trim();
     const effectiveBaseUrl = (baseUrl || headerBaseUrl || serverConfig.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com').trim();
