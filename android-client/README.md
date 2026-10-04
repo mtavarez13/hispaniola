@@ -1,16 +1,16 @@
 # Hispaniola Pay Android
 
-Cliente Android nativo de Hispaniola Pay, desarrollado con Java y las APIs nativas de Android. No utiliza WebView para mostrar el portal web.
+Cliente Android nativo de Hispaniola Pay, desarrollado con Java y las APIs nativas de Android. No utiliza WebView.
 
 ## Módulos nativos
 
-- Inicio y navegación de la app.
-- Billetera principal y bolsillo de ahorro.
-- Movimientos y recargas por sub-agente o transferencia bancaria RD.
-- Formularios para envíos a MonCash y NatCash.
-- Perfil y punto de integración para Firebase Auth y Firestore.
+- Inicio de sesión real con Firebase Authentication.
+- Billetera principal, bolsillo de ahorro y tasas sincronizadas.
+- Envíos en tiempo real a MonCash y NatCash mediante API protegida.
+- Reserva atómica de saldo, idempotencia y protección contra duplicados.
+- Historial, estados y comprobantes de remesas.
 
-Los saldos, credenciales y operaciones financieras no se guardan ni se descuentan localmente. Las pantallas de envío quedan en estado pendiente hasta que el backend transaccional y Firebase estén conectados.
+Los saldos, la clave BenCash y la contabilidad no se guardan en el dispositivo. El APK usa Firebase ID tokens y el backend valida saldo y ejecuta las operaciones.
 
 ## Abrir en Android Studio
 

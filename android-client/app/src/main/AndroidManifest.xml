@@ -1,11 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.hispaniolapay.mobile"
-    android:versionCode="2"
-    android:versionName="1.1.0-native-preview">
+    android:versionCode="3"
+    android:versionName="2.0.0-client">
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:label="Hispaniola Pay"
         android:supportsRtl="true"
         android:theme="@style/Theme.HispaniolaPay">
