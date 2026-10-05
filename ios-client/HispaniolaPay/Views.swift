@@ -21,7 +21,7 @@ struct LoginView: View {
                 }.padding(20).background(.background, in: RoundedRectangle(cornerRadius: 24)).shadow(color: .black.opacity(0.08), radius: 18, y: 8).padding(.top, 15)
                 Label("Acceso protegido y saldo sincronizado", systemImage: "lock.shield.fill").font(.caption).foregroundStyle(.secondary)
             }.padding(.horizontal, 22)
-        }.background(Color(red: 0.96, green: 0.98, blue: 1).ignoresSafeArea())
+        }.background(Color(.systemGroupedBackground).ignoresSafeArea())
     }
 }
 
@@ -39,6 +39,7 @@ struct RootView: View {
 
 struct HomeView: View {
     @EnvironmentObject var session: AppSession
+    @State private var cardAppeared = false
     private var account: Account? { session.accountData?.account }
 
     var body: some View {
@@ -49,14 +50,14 @@ struct HomeView: View {
                     Text("Hola, \(account?.name.split(separator: " ").first.map(String.init) ?? "Cliente")").font(.title.bold())
                     Text("Saldo disponible").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.75))
                     Text((account?.walletBalanceUSD ?? 0).formatted(.currency(code: "USD"))).font(.system(size: 38, weight: .black, design: .rounded))
-                    HStack { Label("Para remesas", systemImage: "bolt.fill"); Spacer(); Text("Ahorro: \((account?.savingsBalanceUSD ?? 0).formatted(.currency(code: "USD")))") }.font(.caption.weight(.semibold))
-                }.padding(22).foregroundStyle(.white).background(LinearGradient(colors: [navy, brandBlue], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 28)).shadow(color: brandBlue.opacity(0.2), radius: 14, y: 8)
+                    HStack { Label("Sincronizado ahora", systemImage: "checkmark.circle.fill"); Spacer(); Text("Ahorro: \((account?.savingsBalanceUSD ?? 0).formatted(.currency(code: "USD")))") }.font(.caption.weight(.semibold))
+                }.padding(22).foregroundStyle(.white).background(LinearGradient(colors: [navy, brandBlue], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 28)).shadow(color: brandBlue.opacity(0.2), radius: 14, y: 8).scaleEffect(cardAppeared ? 1 : 0.96).offset(y: cardAppeared ? 0 : 14).opacity(cardAppeared ? 1 : 0)
 
                 Text("Actividad reciente").font(.title3.bold())
                 if session.accountData?.movements.isEmpty != false { EmptyCard(icon: "arrow.left.arrow.right", title: "Sin movimientos", detail: "Tus depósitos y remesas aparecerán aquí.") }
                 ForEach((session.accountData?.movements ?? []).prefix(8)) { item in MovementRow(item: item) }
             }.padding()
-        }.navigationBarHidden(true).refreshable { await session.synchronize() }
+        }.navigationBarHidden(true).refreshable { await session.synchronize() }.onAppear { withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { cardAppeared = true } }
     }
 }
 
@@ -131,11 +132,16 @@ struct NotificationsView: View {
 
 struct ProfileView: View {
     @EnvironmentObject var session: AppSession
+    @AppStorage("appearance") private var appearance = "system"
     @State private var name = ""; @State private var phone = ""; @State private var idNumber = ""; @State private var country = "DO"; @State private var saved = false
     var body: some View {
         Form {
             Section { HStack(spacing: 14) { Image("BrandMark").resizable().scaledToFit().frame(width: 62, height: 62); VStack(alignment: .leading) { Text(session.accountData?.account.name ?? "Cliente").font(.headline); Text(session.accountData?.account.email ?? "").font(.caption).foregroundStyle(.secondary); Text(session.accountData?.account.clientCode ?? "").font(.caption.monospaced()).foregroundStyle(brandBlue) } } }
             Section("Editar perfil") { TextField("Nombre completo", text: $name); TextField("Teléfono", text: $phone).keyboardType(.phonePad); TextField("Cédula o pasaporte", text: $idNumber); Picker("País", selection: $country) { Text("República Dominicana").tag("DO"); Text("Haití").tag("HT"); Text("Estados Unidos").tag("US") }; Button("Guardar perfil") { Task { saved = await session.saveProfile(name: name, phone: phone, idNumber: idNumber, country: country) } }.disabled(name.count < 2) }
+            Section("Apariencia") {
+                Picker("Tema", selection: $appearance) { Text("Automático").tag("system"); Text("Claro").tag("light"); Text("Oscuro").tag("dark") }.pickerStyle(.segmented)
+                Label("El modo automático sigue la configuración del iPhone.", systemImage: "circle.lefthalf.filled").font(.caption).foregroundStyle(.secondary)
+            }
             Section { Button("Cerrar sesión", role: .destructive) { session.logout() } }
         }.navigationTitle("Mi perfil").onAppear { if let account = session.accountData?.account { name = account.name; phone = account.phone; idNumber = account.idNumber; country = account.country } }.alert("Perfil actualizado", isPresented: $saved) { Button("Aceptar") {} }
     }

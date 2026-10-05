@@ -8,6 +8,7 @@ import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -57,10 +58,13 @@ public final class MainActivity extends Activity {
     private static final int GREEN = Color.rgb(11, 151, 111);
     private static final int RED = Color.rgb(210, 54, 69);
     private static final int AMBER = Color.rgb(231, 151, 31);
-    private static final int INK = Color.rgb(20, 36, 62);
-    private static final int MUTED = Color.rgb(99, 112, 134);
-    private static final int BG = Color.rgb(244, 247, 252);
-    private static final int LINE = Color.rgb(221, 228, 239);
+    private int INK;
+    private int MUTED;
+    private int BG;
+    private int LINE;
+    private int SURFACE;
+    private int SURFACE_ALT;
+    private boolean darkMode;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final NumberFormat usd = NumberFormat.getCurrencyInstance(Locale.US);
@@ -72,9 +76,10 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        applySavedAppearance();
         Window window = getWindow();
         window.setStatusBarColor(NAVY);
-        window.setNavigationBarColor(Color.WHITE);
+        window.setNavigationBarColor(SURFACE);
         api = new ApiClient(this);
         GoogleSignInOptions googleOptions = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(getString(R.string.default_web_client_id)).requestEmail().build();
@@ -82,6 +87,32 @@ public final class MainActivity extends Activity {
         createNotificationChannel();
         requestNotificationPermission();
         if (api.hasSession()) loadAccount(true); else showLogin();
+    }
+
+    private void applySavedAppearance() {
+        String appearance = getSharedPreferences("hispaniola_ui", MODE_PRIVATE).getString("appearance", "system");
+        boolean systemDark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        darkMode = "dark".equals(appearance) || ("system".equals(appearance) && systemDark);
+        if (darkMode) {
+            BG = Color.rgb(8, 17, 32);
+            SURFACE = Color.rgb(17, 28, 48);
+            SURFACE_ALT = Color.rgb(24, 39, 64);
+            INK = Color.rgb(238, 244, 255);
+            MUTED = Color.rgb(159, 174, 199);
+            LINE = Color.rgb(48, 65, 91);
+        } else {
+            BG = Color.rgb(244, 247, 252);
+            SURFACE = Color.WHITE;
+            SURFACE_ALT = Color.rgb(237, 246, 255);
+            INK = Color.rgb(20, 36, 62);
+            MUTED = Color.rgb(99, 112, 134);
+            LINE = Color.rgb(221, 228, 239);
+        }
+    }
+
+    private void setAppearance(String value) {
+        getSharedPreferences("hispaniola_ui", MODE_PRIVATE).edit().putString("appearance", value).apply();
+        recreate();
     }
 
     private void showLogin() {
@@ -96,14 +127,14 @@ public final class MainActivity extends Activity {
 
         ImageView mark = brandImage();
         page.addView(mark, params(dp(96), dp(96), 0));
-        page.addView(text("HispaniolaPay", 29, NAVY, Typeface.BOLD), params(-2, -2, 18));
+        page.addView(text("HispaniolaPay", 29, darkMode ? Color.rgb(126, 188, 255) : NAVY, Typeface.BOLD), params(-2, -2, 18));
         TextView slogan = text("Tu billetera entre RD y Haití", 15, MUTED, Typeface.NORMAL);
         slogan.setGravity(Gravity.CENTER);
         page.addView(slogan, params(-1, -2, 5));
 
         LinearLayout panel = column();
         panel.setPadding(dp(20), dp(22), dp(20), dp(22));
-        panel.setBackground(round(Color.WHITE, 20, LINE, 1));
+        panel.setBackground(round(SURFACE, 24, LINE, 1));
         page.addView(panel, params(-1, -2, 30));
         panel.addView(text("Accede a tu cuenta", 21, INK, Typeface.BOLD));
         panel.addView(text("Consulta tu saldo y envía remesas en tiempo real.", 13, MUTED, Typeface.NORMAL), params(-1, -2, 5));
@@ -497,7 +528,7 @@ public final class MainActivity extends Activity {
             JSONObject item = items.optJSONObject(i); if (item == null) continue;
             boolean read = item.optBoolean("read", false);
             LinearLayout card = card();
-            card.setBackground(round(read ? Color.WHITE : Color.rgb(237, 246, 255), 17, read ? LINE : Color.rgb(160, 204, 250), 1));
+            card.setBackground(round(read ? SURFACE : SURFACE_ALT, 19, read ? LINE : (darkMode ? Color.rgb(52, 98, 145) : Color.rgb(160, 204, 250)), 1));
             LinearLayout titleRow = new LinearLayout(this); titleRow.setGravity(Gravity.CENTER_VERTICAL);
             titleRow.addView(text("deposit".equals(item.optString("type")) ? "+" : "●", 19, "deposit".equals(item.optString("type")) ? GREEN : BLUE, Typeface.BOLD), new LinearLayout.LayoutParams(dp(28), -2));
             titleRow.addView(text(item.optString("title", "HispaniolaPay"), 15, INK, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1));
@@ -543,6 +574,22 @@ public final class MainActivity extends Activity {
             });
         });
         content.addView(save, params(-1, dp(54), 14));
+        section("Apariencia");
+        LinearLayout appearance = new LinearLayout(this);
+        appearance.setOrientation(LinearLayout.HORIZONTAL);
+        Button light = secondaryButton("Claro");
+        Button dark = secondaryButton("Oscuro");
+        Button system = secondaryButton("Automático");
+        light.setOnClickListener(v -> setAppearance("light"));
+        dark.setOnClickListener(v -> setAppearance("dark"));
+        system.setOnClickListener(v -> setAppearance("system"));
+        appearance.addView(light, new LinearLayout.LayoutParams(0, dp(50), 1));
+        appearance.addView(space(dp(8), 1));
+        appearance.addView(dark, new LinearLayout.LayoutParams(0, dp(50), 1));
+        appearance.addView(space(dp(8), 1));
+        appearance.addView(system, new LinearLayout.LayoutParams(0, dp(50), 1));
+        content.addView(appearance);
+        content.addView(text("El modo automático sigue la configuración de tu teléfono.", 11, MUTED, Typeface.NORMAL), params(-1, -2, 8));
         info("Seguridad", "Tus credenciales, saldos y remesas se validan exclusivamente en los servidores seguros de HispaniolaPay.");
         Button refresh = secondaryButton("Actualizar información");
         refresh.setOnClickListener(v -> loadAccount(true));
@@ -565,13 +612,11 @@ public final class MainActivity extends Activity {
     }
 
     private View bottomNav() {
-        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5), dp(5), dp(5), dp(5)); nav.setBackgroundColor(Color.WHITE);
+        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(7), dp(5), dp(7), dp(5)); nav.setBackgroundColor(SURFACE);
         nav.addView(navButton("⌂", "Inicio", this::showHome), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("▣", "Billetera", this::showWallet), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("+", "Depositar", this::showDeposit), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("↗", "Enviar", this::showSend), new LinearLayout.LayoutParams(0, -1, 1));
-        nav.addView(navButton("≡", "Historial", this::showHistory), new LinearLayout.LayoutParams(0, -1, 1));
-        nav.addView(navButton("●", "Avisos", this::showNotifications), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("●", "Perfil", this::showProfile), new LinearLayout.LayoutParams(0, -1, 1)); return nav;
     }
 
@@ -605,7 +650,8 @@ public final class MainActivity extends Activity {
     private void balanceCard(double balance) {
         LinearLayout box = column(); box.setPadding(dp(20), dp(19), dp(20), dp(19)); box.setBackground(roundGradient(BLUE, CYAN, 22));
         LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text("SALDO DISPONIBLE", 12, Color.rgb(220, 240, 255), Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1)); top.addView(text("USD", 12, Color.WHITE, Typeface.BOLD)); box.addView(top);
-        box.addView(text(money(balance), 34, Color.WHITE, Typeface.BOLD), params(-1, -2, 8)); box.addView(text("Disponible para remesas", 13, Color.rgb(226, 242, 255), Typeface.NORMAL), params(-1, -2, 3)); content.addView(box);
+        box.addView(text(money(balance), 34, Color.WHITE, Typeface.BOLD), params(-1, -2, 8)); box.addView(text("● Sincronizado ahora  ·  Disponible para remesas", 12, Color.rgb(226, 242, 255), Typeface.NORMAL), params(-1, -2, 5)); content.addView(box);
+        box.setAlpha(0f); box.setTranslationY(dp(18)); box.animate().alpha(1f).translationY(0f).setDuration(420).start();
     }
 
     private void addRecent(int limit) {
@@ -617,7 +663,7 @@ public final class MainActivity extends Activity {
         }
         for (int i = 0; i < Math.min(limit, list.length()); i++) {
             JSONObject tx = list.optJSONObject(i); if (tx == null) continue;
-            LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(15), dp(14), dp(15), dp(14)); row.setBackground(round(Color.WHITE, 16, LINE, 1));
+            LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(15), dp(14), dp(15), dp(14)); row.setBackground(round(SURFACE, 18, LINE, 1));
             TextView badge = text(tx.optString("operator", "N").startsWith("Mon") ? "M" : "N", 16, Color.WHITE, Typeface.BOLD); badge.setGravity(Gravity.CENTER); badge.setBackground(round(tx.optString("operator").startsWith("Mon") ? RED : BLUE, 13, Color.TRANSPARENT, 0)); row.addView(badge, new LinearLayout.LayoutParams(dp(42), dp(42)));
             LinearLayout labels = column(); labels.setPadding(dp(12), 0, dp(8), 0); labels.addView(text(tx.optString("recipientName", "Destinatario"), 14, INK, Typeface.BOLD)); labels.addView(text(tx.optString("operator") + " · " + tx.optString("recipientPhone"), 11, MUTED, Typeface.NORMAL), params(-1, -2, 3)); labels.addView(text(statusLabel(tx.optString("status")), 11, statusColor(tx.optString("status")), Typeface.BOLD), params(-1, -2, 4)); row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
             LinearLayout totals = column(); totals.setGravity(Gravity.RIGHT); totals.addView(text("-" + money(tx.optDouble("amountUSD", 0)), 14, INK, Typeface.BOLD)); totals.addView(text(String.format(Locale.US, "%,.0f HTG", tx.optDouble("amountHTG", 0)), 11, MUTED, Typeface.NORMAL), params(-2, -2, 3)); row.addView(totals); JSONObject selectedTx = tx; row.setOnClickListener(v -> receipt(selectedTx)); content.addView(row, params(-1, -2, i == 0 ? 0 : 9));
@@ -630,21 +676,23 @@ public final class MainActivity extends Activity {
     }
 
     private View actionTile(String icon, String title, String detail, int color, View.OnClickListener listener) {
-        LinearLayout tile = column(); tile.setGravity(Gravity.CENTER_HORIZONTAL); tile.setPadding(dp(13), dp(15), dp(13), dp(12)); tile.setBackground(round(Color.WHITE, 18, LINE, 1)); tile.addView(text(icon, 26, color, Typeface.BOLD)); tile.addView(text(title, 15, INK, Typeface.BOLD), params(-2, -2, 7)); TextView d = text(detail, 11, MUTED, Typeface.NORMAL); d.setGravity(Gravity.CENTER); tile.addView(d, params(-1, -2, 4)); tile.setOnClickListener(listener); return tile;
+        LinearLayout tile = column(); tile.setGravity(Gravity.CENTER_HORIZONTAL); tile.setPadding(dp(13), dp(15), dp(13), dp(12)); tile.setBackground(round(SURFACE, 22, LINE, 1));
+        TextView iconView = text(icon, 24, color, Typeface.BOLD); iconView.setGravity(Gravity.CENTER); iconView.setBackground(round(Color.argb(32, Color.red(color), Color.green(color), Color.blue(color)), 16, Color.TRANSPARENT, 0));
+        tile.addView(iconView, new LinearLayout.LayoutParams(dp(48), dp(48))); tile.addView(text(title, 15, INK, Typeface.BOLD), params(-2, -2, 7)); TextView d = text(detail, 11, MUTED, Typeface.NORMAL); d.setGravity(Gravity.CENTER); tile.addView(d, params(-1, -2, 4)); tile.setOnClickListener(listener); return tile;
     }
 
     private void section(String label) { content.addView(text(label.toUpperCase(Locale.ROOT), 12, MUTED, Typeface.BOLD), params(-1, -2, 20)); }
-    private void info(String title, String detail) { LinearLayout panel = card(); panel.setBackground(round(Color.rgb(234, 243, 255), 16, Color.rgb(203, 224, 250), 1)); panel.addView(text(title, 14, NAVY, Typeface.BOLD)); panel.addView(text(detail, 12, Color.rgb(65, 83, 113), Typeface.NORMAL), params(-1, -2, 5)); content.addView(panel, params(-1, -2, 14)); }
-    private LinearLayout card() { LinearLayout panel = column(); panel.setPadding(dp(17), dp(16), dp(17), dp(16)); panel.setBackground(round(Color.WHITE, 17, LINE, 1)); return panel; }
-    private EditText input(String hint, int type) { EditText field = new EditText(this); field.setHint(hint); field.setTextSize(15); field.setTextColor(INK); field.setHintTextColor(Color.rgb(137, 148, 165)); field.setSingleLine(true); field.setInputType(type); field.setPadding(dp(15), 0, dp(15), 0); field.setBackground(round(Color.WHITE, 14, LINE, 1)); return field; }
+    private void info(String title, String detail) { LinearLayout panel = card(); panel.setBackground(round(SURFACE_ALT, 18, darkMode ? Color.rgb(52, 79, 113) : Color.rgb(203, 224, 250), 1)); panel.addView(text(title, 14, darkMode ? Color.rgb(130, 190, 255) : NAVY, Typeface.BOLD)); panel.addView(text(detail, 12, MUTED, Typeface.NORMAL), params(-1, -2, 5)); content.addView(panel, params(-1, -2, 14)); }
+    private LinearLayout card() { LinearLayout panel = column(); panel.setPadding(dp(17), dp(16), dp(17), dp(16)); panel.setBackground(round(SURFACE, 20, LINE, 1)); return panel; }
+    private EditText input(String hint, int type) { EditText field = new EditText(this); field.setHint(hint); field.setTextSize(15); field.setTextColor(INK); field.setHintTextColor(MUTED); field.setSingleLine(true); field.setInputType(type); field.setPadding(dp(15), 0, dp(15), 0); field.setBackground(round(SURFACE, 16, LINE, 1)); return field; }
     private Button primaryButton(String label) { Button button = new Button(this); button.setText(label); button.setTextSize(15); button.setTextColor(Color.WHITE); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setBackground(round(BLUE, 14, Color.TRANSPARENT, 0)); return button; }
-    private Button secondaryButton(String label) { Button button = new Button(this); button.setText(label); button.setTextSize(14); button.setTextColor(BLUE); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setBackground(round(Color.WHITE, 14, LINE, 1)); return button; }
+    private Button secondaryButton(String label) { Button button = new Button(this); button.setText(label); button.setTextSize(14); button.setTextColor(darkMode ? Color.rgb(122, 184, 255) : BLUE); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setBackground(round(SURFACE, 14, LINE, 1)); return button; }
     private Button operatorButton(String label, boolean selected) { Button button = new Button(this); button.setText(label); button.setTextSize(14); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); styleOperator(button, selected); return button; }
-    private void styleOperator(Button button, boolean selected) { button.setTextColor(selected ? Color.WHITE : BLUE); button.setBackground(round(selected ? BLUE : Color.WHITE, 14, selected ? BLUE : LINE, 1)); }
+    private void styleOperator(Button button, boolean selected) { button.setTextColor(selected ? Color.WHITE : (darkMode ? Color.rgb(122, 184, 255) : BLUE)); button.setBackground(round(selected ? BLUE : SURFACE, 14, selected ? BLUE : LINE, 1)); }
 
     private void showLoading(String label) {
         FrameLayout frame = new FrameLayout(this);
-        frame.setBackground(roundGradient(Color.rgb(244, 249, 255), Color.rgb(226, 240, 255), 0));
+        frame.setBackground(darkMode ? roundGradient(Color.rgb(7, 16, 31), Color.rgb(14, 35, 62), 0) : roundGradient(Color.rgb(244, 249, 255), Color.rgb(226, 240, 255), 0));
         LinearLayout box = column(); box.setGravity(Gravity.CENTER); box.setPadding(dp(24), dp(30), dp(24), dp(30));
         ImageView logo = brandImage(); box.addView(logo, new LinearLayout.LayoutParams(dp(92), dp(92)));
         TextView moneyFlow = text("$   RD$   HTG", 16, GREEN, Typeface.BOLD); moneyFlow.setGravity(Gravity.CENTER); box.addView(moneyFlow, params(-1, -2, 20));
@@ -679,7 +727,7 @@ public final class MainActivity extends Activity {
     private LinearLayout column() { LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); return layout; }
     private View space(int width, int height) { View view = new View(this); view.setLayoutParams(new LinearLayout.LayoutParams(width, height)); return view; }
     private TextView text(String value, float size, int color, int style) { TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setTextColor(color); view.setTypeface(Typeface.DEFAULT, style); return view; }
-    private ImageView brandImage() { ImageView image = new ImageView(this); image.setImageResource(R.drawable.hispaniolapay_mark); image.setScaleType(ImageView.ScaleType.FIT_CENTER); image.setPadding(dp(5), dp(5), dp(5), dp(5)); image.setBackground(round(Color.WHITE, 22, LINE, 1)); image.setContentDescription("Logo oficial de HispaniolaPay"); return image; }
+    private ImageView brandImage() { ImageView image = new ImageView(this); image.setImageResource(R.drawable.hispaniolapay_mark); image.setScaleType(ImageView.ScaleType.FIT_CENTER); image.setPadding(dp(5), dp(5), dp(5), dp(5)); image.setBackground(round(SURFACE, 22, LINE, 1)); image.setContentDescription("Logo oficial de HispaniolaPay"); return image; }
     private LinearLayout.LayoutParams params(int width, int height, int top) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(width, height); p.topMargin = dp(top); return p; }
     private GradientDrawable round(int color, int radius, int stroke, int strokeWidth) { GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(radius)); if (strokeWidth > 0) d.setStroke(dp(strokeWidth), stroke); return d; }
     private GradientDrawable roundGradient(int start, int end, int radius) { GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{start, end}); d.setCornerRadius(dp(radius)); return d; }
