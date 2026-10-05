@@ -58,6 +58,8 @@ export async function GET(req: NextRequest) {
         role: identity.role,
         clientCode: String(profile.clientCode || ''),
         phone: String(profile.phone || ''),
+        idNumber: String(profile.idNumber || ''),
+        country: String(profile.country || 'DO'),
         walletBalanceUSD: asNumber(profile.walletBalance),
         savingsBalanceUSD: asNumber(profile.savingsBalance),
       },

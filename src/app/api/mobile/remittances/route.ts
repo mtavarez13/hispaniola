@@ -167,7 +167,8 @@ export async function POST(req: NextRequest) {
     const accepted = providerCode === '200' || providerCode === '0';
     const txId = String(provider?.result?.txId || provider?.txId || '');
     const requestId = provider?.requestId || provider?.result?.requestId || null;
-    const providerMessage = String(provider?.resultMessage || provider?.message || 'Respuesta sin detalle');
+    const providerMessage = String(provider?.resultMessage || provider?.message || 'Respuesta sin detalle')
+      .replace(/bencash/gi, 'proveedor de pagos');
 
     if (!accepted) {
       const unknownOutcome = providerCode === '502' || providerCode === '504';
@@ -182,7 +183,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: false,
           pendingReview: true,
-          error: 'No se pudo verificar el resultado con BenCash. No repita el envío; soporte revisará la operación.',
+          error: 'No se pudo verificar el resultado con el proveedor de pagos. No repita el envío; soporte revisará la operación.',
           remittanceId,
           requestId,
         }, { status: 202 });

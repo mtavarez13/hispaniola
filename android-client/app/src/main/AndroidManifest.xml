@@ -1,13 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="5"
-    android:versionName="2.1.1-client">
+    android:versionCode="6"
+    android:versionName="2.2.0-client">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
-        android:icon="@drawable/ic_launcher"
-        android:roundIcon="@drawable/ic_launcher"
+        android:icon="@drawable/hispaniolapay_mark"
+        android:roundIcon="@drawable/hispaniolapay_mark"
         android:label="Hispaniola Pay"
         android:supportsRtl="true"
         android:theme="@style/Theme.HispaniolaPay">

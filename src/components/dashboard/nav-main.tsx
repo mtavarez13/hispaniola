@@ -17,6 +17,8 @@ import {
   Terminal,
   MessageSquare,
   UserCog,
+  UserRound,
+  UsersRound,
 } from "lucide-react"
 
 import Link from "next/link"
@@ -121,6 +123,18 @@ export function NavMain({ user }: { user: UserProfile }) {
       title: "Bandeja WhatsApp",
       icon: MessageSquare,
       url: "/dashboard/whatsapp-inbox",
+      show: isAdmin,
+    },
+    {
+      title: "Mi perfil",
+      icon: UserRound,
+      url: "/dashboard/profile",
+      show: true,
+    },
+    {
+      title: "Perfiles de clientes",
+      icon: UsersRound,
+      url: "/dashboard/client-profiles",
       show: isAdmin,
     },
     {

@@ -21,6 +21,7 @@ import android.view.Window;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -44,7 +45,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Cliente nativo. Las credenciales BenCash y la contabilidad permanecen en el servidor. */
+/** Cliente nativo. Las credenciales del proveedor y la contabilidad permanecen en el servidor. */
 public final class MainActivity extends Activity {
     private static final int GOOGLE_SIGN_IN = 701;
     private static final int NOTIFICATION_PERMISSION = 702;
@@ -91,10 +92,8 @@ public final class MainActivity extends Activity {
         page.setBackgroundColor(BG);
         scroll.addView(page);
 
-        TextView mark = text("H", 34, Color.WHITE, Typeface.BOLD);
-        mark.setGravity(Gravity.CENTER);
-        mark.setBackground(roundGradient(BLUE, CYAN, 24));
-        page.addView(mark, params(dp(76), dp(76), 0));
+        ImageView mark = brandImage();
+        page.addView(mark, params(dp(96), dp(96), 0));
         page.addView(text("HispaniolaPay", 29, NAVY, Typeface.BOLD), params(-2, -2, 18));
         TextView slogan = text("Tu billetera entre RD y Haití", 15, MUTED, Typeface.NORMAL);
         slogan.setGravity(Gravity.CENTER);
@@ -313,16 +312,20 @@ public final class MainActivity extends Activity {
                 JSONObject payload = new JSONObject().put("operator", operator).put("recipientName", recipient).put("recipientPhone", phone).put("amountUSD", amount).put("idempotencyKey", UUID.randomUUID().toString());
                 JSONObject response = api.sendRemittance(payload);
                 JSONObject remittance = response.optJSONObject("remittance");
+                double updatedBalance = response.optDouble("walletBalanceUSD", Double.NaN);
+                if (!Double.isNaN(updatedBalance)) account().put("walletBalanceUSD", updatedBalance);
+                try { accountData = api.account(); } catch (Exception ignored) { }
                 runOnUiThread(() -> {
                     String txId = remittance == null ? "" : remittance.optString("txId");
                     String reference = remittance == null ? "" : remittance.optString("id");
                     String status = remittance == null ? "procesando" : remittance.optString("status", "procesando");
                     new AlertDialog.Builder(this).setTitle("¡Remesa recibida!")
                             .setMessage("Estado: " + status.toUpperCase(Locale.ROOT) + "\nReferencia: " + (txId.isEmpty() ? reference : txId) + "\n\nPuedes consultar esta operación en Historial.")
-                            .setCancelable(false).setPositiveButton("Ver comprobante", (d, w) -> loadAccount(true)).show();
+                            .setCancelable(false).setPositiveButton("Ver saldo actualizado", (d, w) -> showHome()).show();
                 });
             } catch (Exception error) {
-                runOnUiThread(() -> { button.setEnabled(true); button.setText("Revisar y enviar"); errorDialog("No se completó el envío", friendly(error)); });
+                try { accountData = api.account(); } catch (Exception ignored) { }
+                runOnUiThread(() -> { showSend(); errorDialog("No se completó el envío", friendly(error)); });
             }
         });
     }
@@ -387,7 +390,28 @@ public final class MainActivity extends Activity {
         panel.addView(text("Código: " + account.optString("clientCode", "Sin asignar"), 13, BLUE, Typeface.BOLD), params(-1, -2, 14));
         panel.addView(text("Teléfono: " + account.optString("phone", "No registrado"), 13, MUTED, Typeface.NORMAL), params(-1, -2, 6));
         content.addView(panel);
-        info("Seguridad", "La app nunca recibe la clave de BenCash. Tus saldos y remesas se validan en el servidor HispaniolaPay.");
+        section("Editar información");
+        EditText name = input("Nombre completo", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        name.setText(account.optString("name", ""));
+        EditText phone = input("Teléfono / WhatsApp", InputType.TYPE_CLASS_PHONE);
+        phone.setText(account.optString("phone", ""));
+        EditText idNumber = input("Cédula o pasaporte", InputType.TYPE_CLASS_TEXT);
+        idNumber.setText(account.optString("idNumber", ""));
+        content.addView(name, params(-1, dp(56), 0)); content.addView(phone, params(-1, dp(56), 10)); content.addView(idNumber, params(-1, dp(56), 10));
+        Button save = primaryButton("Guardar perfil");
+        save.setOnClickListener(v -> {
+            if (name.getText().toString().trim().length() < 2) { toast("Escribe tu nombre completo."); return; }
+            save.setEnabled(false); save.setText("Guardando…");
+            executor.execute(() -> {
+                try {
+                    api.updateProfile(new JSONObject().put("name", name.getText().toString().trim()).put("phone", phone.getText().toString().trim()).put("idNumber", idNumber.getText().toString().trim()).put("country", account.optString("country", "DO")));
+                    accountData = api.account();
+                    runOnUiThread(() -> { toast("Perfil actualizado correctamente."); showProfile(); });
+                } catch (Exception error) { runOnUiThread(() -> { save.setEnabled(true); save.setText("Guardar perfil"); errorDialog("No se pudo guardar", friendly(error)); }); }
+            });
+        });
+        content.addView(save, params(-1, dp(54), 14));
+        info("Seguridad", "Tus credenciales, saldos y remesas se validan exclusivamente en los servidores seguros de HispaniolaPay.");
         Button refresh = secondaryButton("Actualizar información");
         refresh.setOnClickListener(v -> loadAccount(true));
         content.addView(refresh, params(-1, dp(54), 14));
@@ -401,8 +425,8 @@ public final class MainActivity extends Activity {
         LinearLayout root = column(); root.setBackgroundColor(BG);
         LinearLayout header = column(); header.setPadding(dp(21), dp(17), dp(21), dp(17)); header.setBackground(roundGradient(NAVY, BLUE, 0));
         LinearLayout brandRow = new LinearLayout(this); brandRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView logo = text("H", 18, BLUE, Typeface.BOLD); logo.setGravity(Gravity.CENTER); logo.setBackground(round(Color.WHITE, 11, Color.TRANSPARENT, 0));
-        brandRow.addView(logo, new LinearLayout.LayoutParams(dp(38), dp(38))); brandRow.addView(text("  HispaniolaPay", 18, Color.WHITE, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1)); TextView bell = text("●", 20, Color.rgb(255, 207, 92), Typeface.BOLD); bell.setGravity(Gravity.CENTER); bell.setContentDescription("Abrir notificaciones"); bell.setOnClickListener(v -> showNotifications()); brandRow.addView(bell, new LinearLayout.LayoutParams(dp(42), dp(38))); header.addView(brandRow);
+        ImageView logo = brandImage();
+        brandRow.addView(logo, new LinearLayout.LayoutParams(dp(42), dp(42))); brandRow.addView(text("  HispaniolaPay", 18, Color.WHITE, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1)); TextView bell = text("●", 20, Color.rgb(255, 207, 92), Typeface.BOLD); bell.setGravity(Gravity.CENTER); bell.setContentDescription("Abrir notificaciones"); bell.setOnClickListener(v -> showNotifications()); brandRow.addView(bell, new LinearLayout.LayoutParams(dp(42), dp(38))); header.addView(brandRow);
         header.addView(text(title, 25, Color.WHITE, Typeface.BOLD), params(-1, -2, 17)); header.addView(text(subtitle, 13, Color.rgb(211, 227, 250), Typeface.NORMAL), params(-1, -2, 4)); root.addView(header);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); content = column(); content.setPadding(dp(18), dp(18), dp(18), dp(28)); scroll.addView(content); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(bottomNav(), new LinearLayout.LayoutParams(-1, dp(68))); setContentView(root);
@@ -500,6 +524,7 @@ public final class MainActivity extends Activity {
     private LinearLayout column() { LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); return layout; }
     private View space(int width, int height) { View view = new View(this); view.setLayoutParams(new LinearLayout.LayoutParams(width, height)); return view; }
     private TextView text(String value, float size, int color, int style) { TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setTextColor(color); view.setTypeface(Typeface.DEFAULT, style); return view; }
+    private ImageView brandImage() { ImageView image = new ImageView(this); image.setImageResource(R.drawable.hispaniolapay_mark); image.setScaleType(ImageView.ScaleType.FIT_CENTER); image.setPadding(dp(5), dp(5), dp(5), dp(5)); image.setBackground(round(Color.WHITE, 22, LINE, 1)); image.setContentDescription("Logo oficial de HispaniolaPay"); return image; }
     private LinearLayout.LayoutParams params(int width, int height, int top) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(width, height); p.topMargin = dp(top); return p; }
     private GradientDrawable round(int color, int radius, int stroke, int strokeWidth) { GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(radius)); if (strokeWidth > 0) d.setStroke(dp(strokeWidth), stroke); return d; }
     private GradientDrawable roundGradient(int start, int end, int radius) { GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{start, end}); d.setCornerRadius(dp(radius)); return d; }

@@ -35,6 +35,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   connectGmail: () => Promise<string | null>;
   updateProfileBalances: (walletBalance: number, savingsBalance?: number) => Promise<void>;
+  updateProfileDetails: (details: { name: string; phone: string; idNumber: string; country: string }) => Promise<void>;
 }
 
 function createSyntheticUser(email: string, displayName?: string, customUid?: string): User {
@@ -422,6 +423,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (_) {}
   };
 
+  const updateProfileDetails = async (details: { name: string; phone: string; idNumber: string; country: string }) => {
+    if (!user || !userProfile) throw new Error("No hay una sesión activa");
+    const response = await fetch("/api/mobile/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
+      body: JSON.stringify(details),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || "No se pudo guardar el perfil");
+    const updated = { ...userProfile, ...data.profile } as UserProfile;
+    setUserProfile(updated);
+    localStorage.setItem(`hispaniolapay_profile_${updated.uid}`, JSON.stringify(updated));
+  };
+
   const logout = async () => {
     try {
       await signOut(auth).catch(() => {});
@@ -449,6 +464,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout,
       connectGmail,
       updateProfileBalances,
+      updateProfileDetails,
     }}>
       {children}
     </AuthContext.Provider>

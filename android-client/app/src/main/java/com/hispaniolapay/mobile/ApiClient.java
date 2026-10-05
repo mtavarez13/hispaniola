@@ -63,6 +63,10 @@ final class ApiClient {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/account", "GET", null, 25000);
     }
 
+    JSONObject updateProfile(JSONObject payload) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/profile", "PATCH", payload, 25000);
+    }
+
     JSONObject sendRemittance(JSONObject payload) throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances", "POST", payload, 65000);
     }

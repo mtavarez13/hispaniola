@@ -40,7 +40,7 @@ interface SubAgentFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subAgentToEdit?: SubAgent | null;
-  onSave: (subAgentData: Partial<SubAgent>) => void;
+  onSave: (subAgentData: Partial<SubAgent>) => void | Promise<void>;
 }
 
 const DEFAULT_MODULES: SubAgentModules = {
@@ -197,7 +197,9 @@ export function SubAgentFormDialog({
 
   const currentMunicipalities = currentDivisions[province]?.municipalities || [];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const locationData: SubAgentLocation = {
@@ -213,7 +215,9 @@ export function SubAgentFormDialog({
       },
     };
 
-    onSave({
+    setSaving(true);
+    try {
+      await onSave({
       name: name || "Nuevo Sub-Agente",
       owner: owner || "Responsable Autorizado",
       idNumber: idNumber || "N/A",
@@ -228,9 +232,11 @@ export function SubAgentFormDialog({
       location: locationData,
       modules,
       notes,
-    });
-
-    onOpenChange(false);
+      });
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -671,10 +677,11 @@ export function SubAgentFormDialog({
               </Button>
               <Button
                 type="submit"
+                disabled={saving}
                 className="bg-primary hover:bg-primary/90 text-white font-bold gap-1.5 shadow-sm px-5"
               >
                 <Check className="w-4 h-4" />
-                <span>{isEditing ? "Guardar Cambios" : "Crear Sub-Agente"}</span>
+                <span>{saving ? "Guardando..." : isEditing ? "Guardar Cambios" : "Crear Sub-Agente"}</span>
               </Button>
             </div>
           </DialogFooter>

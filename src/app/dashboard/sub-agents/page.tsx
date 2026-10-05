@@ -81,7 +81,20 @@ export default function SubAgentsPage() {
     const loaded = loadSubAgentsFromStorage();
     setSubAgents(loaded);
     setIsLoaded(true);
-  }, []);
+    if (user && actualIsAdmin) {
+      user.getIdToken().then((token) => fetch("/api/admin/sub-agents", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }))
+        .then((response) => response.json())
+        .then((data) => {
+          if (!data.success || !Array.isArray(data.subAgents) || data.subAgents.length === 0) return;
+          setSubAgents((current) => {
+            const remoteById = new Map<string, SubAgent>(data.subAgents.map((item: SubAgent) => [item.id, item] as [string, SubAgent]));
+            const merged: SubAgent[] = current.map((item) => remoteById.get(item.id) || item);
+            data.subAgents.forEach((item: SubAgent) => { if (!merged.some((existing) => existing.id === item.id)) merged.unshift(item); });
+            saveSubAgentsToStorage(merged); return merged;
+          });
+        }).catch(() => undefined);
+    }
+  }, [user, actualIsAdmin]);
 
   // Save changes
   const updateListAndPersist = (updated: SubAgent[]) => {
@@ -183,7 +196,19 @@ export default function SubAgentsPage() {
   };
 
   // Save (Create or Update)
-  const handleSaveSubAgent = (subAgentData: Partial<SubAgent>) => {
+  const persistSubAgent = async (subAgent: SubAgent) => {
+    try {
+      if (!user) throw new Error("Sesión de administrador no disponible");
+      const response = await fetch("/api/admin/sub-agents", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` }, body: JSON.stringify({ subAgent }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "No se pudo guardar el subagente");
+    } catch (error) {
+      toast({ variant: "destructive", title: "No se pudo guardar el subagente", description: error instanceof Error ? error.message : "Error inesperado" });
+      throw error;
+    }
+  };
+
+  const handleSaveSubAgent = async (subAgentData: Partial<SubAgent>) => {
     if (!isAdmin) {
       toast({
         title: "Acción no autorizada",
@@ -194,13 +219,15 @@ export default function SubAgentsPage() {
     }
     if (selectedSubAgentForEdit) {
       // Update
+      const saved = {
+        ...selectedSubAgentForEdit,
+        ...subAgentData,
+        updatedAt: new Date().toISOString(),
+      } as SubAgent;
+      await persistSubAgent(saved);
       const updated = subAgents.map((sa) =>
         sa.id === selectedSubAgentForEdit.id
-          ? {
-              ...sa,
-              ...subAgentData,
-              updatedAt: new Date().toISOString(),
-            }
+          ? saved
           : sa
       );
       updateListAndPersist(updated as SubAgent[]);
@@ -219,6 +246,7 @@ export default function SubAgentsPage() {
         creditLimit: 0,
         createdAt: new Date().toISOString(),
       };
+      await persistSubAgent(newRecord);
       const updated = [newRecord, ...subAgents];
       updateListAndPersist(updated);
       toast({
@@ -846,7 +874,7 @@ export default function SubAgentsPage() {
                                   size="sm"
                                   onClick={() => handleOpenEditDialog(sa)}
                                   className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
-                                  title="Editar configuración"
+                                  title="Editar perfil del sub-agente"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
                                 </Button>

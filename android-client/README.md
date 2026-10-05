@@ -10,7 +10,7 @@ Cliente Android nativo de Hispaniola Pay, desarrollado con Java y las APIs nativ
 - Reserva atómica de saldo, idempotencia y protección contra duplicados.
 - Historial, estados y comprobantes de remesas.
 
-Los saldos, la clave BenCash y la contabilidad no se guardan en el dispositivo. El APK usa Firebase ID tokens y el backend valida saldo y ejecuta las operaciones.
+Los saldos, las credenciales del proveedor y la contabilidad no se guardan en el dispositivo. El APK usa Firebase ID tokens y el backend valida saldo y ejecuta las operaciones.
 
 ## Abrir en Android Studio
 

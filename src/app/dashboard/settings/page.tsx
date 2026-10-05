@@ -801,25 +801,10 @@ export default function SettingsPage() {
               <CardDescription>Actualiza tus datos básicos de contacto.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nombre Completo</Label>
-                  <Input id="name" defaultValue={userProfile?.name || user?.displayName || ""} placeholder="Tu nombre completo" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Correo Electrónico</Label>
-                  <Input id="email" defaultValue={userProfile?.email || user?.email || ""} placeholder="tu@correo.com" disabled />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Teléfono</Label>
-                  <Input id="phone" defaultValue={userProfile?.phone || ""} placeholder="+1 (809) 000-0000" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="country">País de Operación</Label>
-                  <Input id="country" defaultValue={userProfile?.country || "DO"} disabled />
-                </div>
-              </div>
-              <Button className="bg-primary hover:bg-primary/90 text-white font-bold">Guardar Cambios</Button>
+              <p className="text-sm text-muted-foreground">El editor de perfil ahora tiene guardado seguro y está disponible para todos los usuarios.</p>
+              <Button onClick={() => router.push("/dashboard/profile")} className="bg-primary hover:bg-primary/90 text-white font-bold gap-2">
+                <User className="w-4 h-4" /> Abrir perfil y guardar cambios
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

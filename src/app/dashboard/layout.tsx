@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useRouter, usePathname } from "next/navigation"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { Bell, LogOut, User, EyeOff, Eye, Maximize2 } from "lucide-react"
+import { Bell, LogOut, User, EyeOff, Eye, Maximize2, Settings } from "lucide-react"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import {
   DropdownMenu,
@@ -156,9 +156,13 @@ export default function DashboardLayout({
                    </div>
                  </DropdownMenuLabel>
                  <DropdownMenuSeparator />
-                 {currentProfile.canAccessSettings !== false && <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+                 <DropdownMenuItem onClick={() => router.push("/dashboard/profile")}>
                    <User className="mr-2 h-4 w-4" />
-                   <span>Perfil y Configuración</span>
+                   <span>Editar mi perfil</span>
+                 </DropdownMenuItem>
+                 {currentProfile.canAccessSettings !== false && <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+                   <Settings className="mr-2 h-4 w-4" />
+                   <span>Configuración</span>
                  </DropdownMenuItem>}
                  <DropdownMenuSeparator />
                  <DropdownMenuItem onClick={() => logout().then(() => router.push("/"))} className="text-destructive focus:text-destructive">
