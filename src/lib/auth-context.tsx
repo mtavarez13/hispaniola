@@ -13,7 +13,7 @@ import {
   onAuthStateChanged,
   type User 
 } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import type { UserProfile, UserRole } from "@/lib/types";
 
 interface AuthContextType {
@@ -281,6 +281,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribe();
   }, []);
+
+  // El documento de usuario es la única fuente de verdad para el saldo en web y Android.
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsubscribe = onSnapshot(doc(db, "users", user.uid), (snapshot) => {
+      if (!snapshot.exists()) return;
+      const profile = { uid: user.uid, ...snapshot.data() } as UserProfile;
+      setUserProfile(profile);
+      try { localStorage.setItem(`hispaniolapay_profile_${user.uid}`, JSON.stringify(profile)); } catch (_) {}
+    }, (error) => console.warn("No se pudo sincronizar el perfil en tiempo real:", error));
+    return unsubscribe;
+  }, [user?.uid]);
 
   const loginWithGoogle = async () => {
     try {

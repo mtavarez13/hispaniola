@@ -54,15 +54,9 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
-  getClientWalletBalances, 
   saveClientWalletBalances,
-  getClientDeposits,
   saveClientDeposit,
-  getClientMovements,
-  addClientMovement,
   transferBetweenPockets,
-  confirmDepositAndCreditWallet,
-  sendRemittanceFromClientWallet,
   WalletBalances
 } from "@/lib/client-wallet-service";
 import { ClientDepositRecord, ClientWalletMovement, HaitiDepositTransaction } from "@/lib/types";
@@ -97,24 +91,55 @@ function ClientWalletContent() {
   // Exchange Rates
   const rateDOP = settings?.publicRateDOP || 58.5;
   const rateHTG = settings?.publicRateHTG || 132.2;
-  const feePercent = settings?.defaultFeePercent || 5.0;
+  const feePercent = settings?.haitiPublicFeePercent || 8.0;
 
   // Load balances and data
-  const refreshData = useCallback(() => {
-    const b = getClientWalletBalances(uid, userProfile);
-    setBalances(b);
-    setDeposits(getClientDeposits(uid));
-    setMovements(getClientMovements(uid));
+  const refreshData = useCallback(async () => {
+    setBalances({
+      walletBalance: Number(userProfile?.walletBalance || 0),
+      savingsBalance: Number(userProfile?.savingsBalance || 0),
+      clientCode: userProfile?.clientCode || "",
+      phone: userProfile?.phone || "",
+      idNumber: userProfile?.idNumber || "",
+    });
+    if (user) {
+      try {
+        const response = await fetch("/api/mobile/account", { headers: { Authorization: `Bearer ${await user.getIdToken()}` }, cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || "No se pudo sincronizar la billetera");
+        const account = data.account || {};
+        setBalances({ walletBalance: Number(account.walletBalanceUSD || 0), savingsBalance: Number(account.savingsBalanceUSD || 0), clientCode: account.clientCode || "", phone: account.phone || "", idNumber: account.idNumber || "" });
+        setMovements((data.movements || []).map((item: any) => ({
+          id: item.id, clientId: uid, type: item.type as ClientWalletMovement["type"], title: item.title,
+          description: item.description, amountUSD: Number(item.amountUSD || 0), direction: item.direction,
+          targetPocket: "main", date: item.createdAt || new Date().toISOString(), referenceId: item.referenceId,
+          recipient: item.recipientName, status: item.status === "completed" ? "completed" : item.status === "failed" ? "failed" : "pending", receiptCode: item.receiptCode,
+        })));
+        setDeposits((data.deposits || []).map((item: any) => ({
+          id: item.id, clientId: uid, clientName: userProfile?.name || "Cliente", clientCode: account.clientCode || "",
+          amount: Number(item.amount || 0), currency: item.currency === "DOP" ? "DOP" : "USD", amountCreditedUSD: Number(item.amountCreditedUSD || 0),
+          method: "bank_transfer", bankReference: item.reference, targetPocket: "main", status: item.status,
+          voucherCode: item.reference || item.id, notes: item.methodLabel, createdAt: item.createdAt || new Date().toISOString(),
+        })));
+      } catch (error) { console.warn("Wallet sync failed:", error); }
+    }
     try {
       const loadedSubAgents = loadSubAgentsFromStorage();
       if (loadedSubAgents && loadedSubAgents.length > 0) {
         setSubAgentsList(loadedSubAgents);
       }
     } catch (_) {}
-  }, [uid, userProfile]);
+  }, [uid, user, userProfile]);
 
   useEffect(() => {
     refreshData();
+  }, [refreshData]);
+
+  useEffect(() => {
+    const timer = window.setInterval(refreshData, 15000);
+    const onFocus = () => refreshData();
+    window.addEventListener("focus", onFocus);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, [refreshData]);
 
   useEffect(() => {
@@ -147,17 +172,17 @@ function ClientWalletContent() {
     const clean = sendPhone.replace(/\D/g, "");
     if (clean.length >= 8) {
       const detected = detectHaitiOperator(clean);
-      if (detected.isDetected && (detected.operator === "MonCash" || detected.operator === "NatCash")) {
+      if (detected.operator === "MonCash" || detected.operator === "NatCash") {
         setSendOperator(detected.operator);
       }
     }
   }, [sendPhone]);
 
   const sendFeeUSD = Math.round(sendAmountUSD * (feePercent / 100) * 100) / 100;
-  const totalSendUSD = Math.round((sendAmountUSD + sendFeeUSD) * 100) / 100;
-  const receiveHTG = Math.round(sendAmountUSD * rateHTG);
+  const totalSendUSD = sendAmountUSD;
+  const receiveHTG = Math.round((sendAmountUSD - sendFeeUSD) * rateHTG);
 
-  const handleSendRemittance = (e: React.FormEvent) => {
+  const handleSendRemittance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sendRecipientName.trim()) {
       toast({
@@ -184,42 +209,30 @@ function ClientWalletContent() {
       return;
     }
 
+    if (!user) return;
     setSendProcessing(true);
-    setTimeout(() => {
-      const result = sendRemittanceFromClientWallet({
-        clientId: uid,
-        senderName: userProfile?.name || user?.displayName || "Cliente Registrado",
-        senderPhone: balances.phone,
-        operator: sendOperator,
-        recipientPhone: sendPhone,
-        recipientName: sendRecipientName.trim(),
-        amountUSD: sendAmountUSD,
-        feePercent,
-        rateHTG,
+    try {
+      const response = await fetch("/api/mobile/remittances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
+        body: JSON.stringify({ operator: sendOperator, recipientPhone: sendPhone, recipientName: sendRecipientName.trim(), amountUSD: sendAmountUSD, idempotencyKey: crypto.randomUUID() }),
       });
-
-      setSendProcessing(false);
-
-      if (result.success && result.tx && result.movement) {
-        toast({
-          title: "¡Remesa Enviada con Éxito!",
-          description: result.message,
-        });
-        setRecentSentTx(result.tx);
-        setSelectedReceiptMovement(result.movement);
-        setIsReceiptOpen(true);
-        refreshData();
-        // Clear fields
-        setSendRecipientName("");
-        setSendAmountUSD(30);
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Error al enviar remesa",
-          description: result.message,
-        });
-      }
-    }, 600);
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "No se pudo completar la remesa");
+      const tx = result.remittance || {};
+      const movement: ClientWalletMovement = { id: tx.id, clientId: uid, type: sendOperator === "MonCash" ? "remittance_moncash" : "remittance_natcash", title: `Remesa ${sendOperator}`, description: `Enviado a ${sendRecipientName.trim()}`, amountUSD: sendAmountUSD, direction: "out", targetPocket: "main", date: new Date().toISOString(), referenceId: tx.txId || tx.id, recipient: sendRecipientName.trim(), status: tx.status === "completed" ? "completed" : "pending", receiptCode: tx.txId || tx.id };
+      const receiptTx: HaitiDepositTransaction = { id: tx.id, requestId: tx.requestId || tx.id, txId: tx.txId || tx.id, operator: sendOperator, toAccountNumber: sendPhone, recipientName: sendRecipientName.trim(), amountUSD: sendAmountUSD, amountHTG: Number(tx.amountHTG || receiveHTG), feeHTG: sendFeeUSD * rateHTG, totalAmountHTG: Number(tx.amountHTG || receiveHTG), content: `Remesa a ${sendRecipientName.trim()}`, status: tx.status === "completed" ? "confirmed" : "pending", senderName: userProfile?.name || "Cliente", timestamp: Date.now(), createdAt: new Date().toISOString(), feePercent, feeUSD: sendFeeUSD };
+      toast({ title: "¡Remesa enviada!", description: "El saldo fue debitado y sincronizado en todos tus dispositivos." });
+      setRecentSentTx(receiptTx);
+      setSelectedReceiptMovement(movement);
+      setIsReceiptOpen(true);
+      await refreshData();
+      setSendRecipientName("");
+      setSendAmountUSD(30);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error al enviar remesa", description: error instanceof Error ? error.message : "Error inesperado" });
+      await refreshData();
+    } finally { setSendProcessing(false); }
   };
 
   // --- FORM STATE: DEPOSIT AT SUB-AGENT ---
@@ -279,32 +292,13 @@ function ClientWalletContent() {
     });
   };
 
-  // Simulate immediate approval at sub-agent
-  const handleSimulateSubAgentCashierApproval = (depositId: string) => {
-    const res = confirmDepositAndCreditWallet(depositId, "Cajero Sub-Agente (Confirmación en Ventanilla)");
-    if (res.success) {
-      toast({
-        title: "¡Depósito Recibido y Acreditado!",
-        description: res.message,
-      });
-      setIsDepositOrderModalOpen(false);
-      refreshData();
-    } else {
-      toast({
-        variant: "destructive",
-        title: "Nota",
-        description: res.message,
-      });
-    }
-  };
-
   // --- FORM STATE: BANK TRANSFER DEPOSIT (RD) ---
   const [bankName, setBankName] = useState<"Banreservas" | "Banco BHD" | "Banco Popular">("Banreservas");
   const [bankRef, setBankRef] = useState("");
   const [bankAmountDOP, setBankAmountDOP] = useState<number>(6000);
   const [bankTargetPocket, setBankTargetPocket] = useState<"main" | "savings">("main");
 
-  const handleRegisterBankDeposit = (e: React.FormEvent) => {
+  const handleRegisterBankDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bankRef.trim()) {
       toast({
@@ -315,50 +309,17 @@ function ClientWalletContent() {
       return;
     }
 
-    const credited = Math.round((bankAmountDOP / rateDOP) * 100) / 100;
-    const newBankDeposit: ClientDepositRecord = {
-      id: `DEP-BNK-${Math.floor(1000 + Math.random() * 9000)}`,
-      clientId: uid,
-      clientName: userProfile?.name || user?.displayName || "Cliente Registrado",
-      clientCode: balances.clientCode,
-      clientPhone: balances.phone,
-      amount: bankAmountDOP,
-      currency: "DOP",
-      amountCreditedUSD: credited,
-      method: "bank_transfer",
-      bankName,
-      bankReference: bankRef.trim(),
-      targetPocket: bankTargetPocket,
-      status: "pending",
-      voucherCode: `VOUCH-BNK-${Date.now().toString().slice(-5)}`,
-      notes: `Transferencia reportada de ${bankName}. Comprobante: ${bankRef.trim()}`,
-      createdAt: new Date().toISOString(),
-    };
-
-    saveClientDeposit(newBankDeposit);
-
-    addClientMovement({
-      id: `MOV-${Date.now().toString().slice(-6)}`,
-      clientId: uid,
-      type: "deposit_bank",
-      title: `Depósito Bancario ${bankName}`,
-      description: `Comprobante ${bankRef.trim()} enviado: +$${credited.toFixed(2)} USD (RD$ ${bankAmountDOP.toLocaleString()})`,
-      amountUSD: credited,
-      direction: "in",
-      targetPocket: bankTargetPocket,
-      date: new Date().toISOString(),
-      referenceId: newBankDeposit.id,
-      status: "pending",
-      receiptCode: newBankDeposit.voucherCode,
-    });
-
-    toast({
-      title: "Comprobante Registrado (Pendiente de Acreditación)",
-      description: `Tu comprobante de RD$ ${bankAmountDOP.toLocaleString()} ha sido recibido. El Administrador verificará la transferencia bancaria antes de acreditar los fondos a tu cuenta.`,
-    });
-
-    setBankRef("");
-    refreshData();
+    if (!user) return;
+    const aliases: Record<string, string> = { Banreservas: "bank-br-dop", "Banco BHD": "bank-bhd-dop", "Banco Popular": "bank-pop-dop" };
+    const configured = settings?.officialBankAccounts?.find((account) => account.bankName.toLowerCase().includes(bankName.replace("Banco ", "").toLowerCase()));
+    try {
+      const response = await fetch("/api/mobile/deposits", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` }, body: JSON.stringify({ methodId: `bank:${configured?.id || aliases[bankName]}`, amount: bankAmountDOP, reference: bankRef.trim() }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "No se pudo registrar el depósito");
+      toast({ title: data.duplicate ? "Depósito ya registrado" : "Comprobante recibido", description: `La referencia quedó pendiente de validación con 0% de comisión.` });
+      setBankRef("");
+      await refreshData();
+    } catch (error) { toast({ variant: "destructive", title: "No se pudo registrar", description: error instanceof Error ? error.message : "Error inesperado" }); }
   };
 
   // --- DIALOG: TRANSFER BETWEEN POCKETS (AHORRO) ---
@@ -1433,18 +1394,9 @@ function ClientWalletContent() {
               {/* Simulation cashier action */}
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-950 space-y-2">
                 <span className="font-bold flex items-center gap-1.5 text-emerald-900">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> ¿Estás en la ventanilla del Sub-Agente?
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Validación segura en ventanilla
                 </span>
-                <p>
-                  El cajero puede verificar tu código o puedes confirmar la recepción del efectivo directamente:
-                </p>
-                <Button
-                  size="sm"
-                  onClick={() => handleSimulateSubAgentCashierApproval(createdDepositOrder.id)}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs h-9 gap-1.5"
-                >
-                  Confirmar Depósito (Simulación en Ventanilla)
-                </Button>
+                <p>Entrega el efectivo y presenta este boleto. Solo el cajero autorizado puede acreditar el saldo desde el servidor.</p>
               </div>
             </div>
           )}

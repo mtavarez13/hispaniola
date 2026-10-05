@@ -1,178 +1,95 @@
 "use client"
 
-import { StatsGrid } from "@/components/dashboard/stats-grid"
-import { CalculatorCard } from "@/components/remittance/calculator-card"
-import { WeeklyRemittanceChart } from "@/components/dashboard/weekly-remittance-chart"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
+import { ArrowDownLeft, ArrowRight, ArrowUpRight, CheckCircle2, Clock3, RefreshCw, Send, ShieldCheck, UserRound, Wallet } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { useSystemSettings } from "@/lib/settings-context"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { CreditCard, ArrowRight, Download, Send, Search, Smartphone, ExternalLink } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { useSystemSettings } from "@/lib/settings-context"
-import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+type Movement = { id: string; title: string; description: string; direction: "in" | "out" | "transfer"; amountUSD: number; status: string; createdAt?: string }
+type AccountData = { account?: { name?: string; walletBalanceUSD?: number; savingsBalanceUSD?: number; clientCode?: string }; movements?: Movement[]; refreshedAt?: string }
 
 export default function DashboardPage() {
+  const { user, userProfile } = useAuth()
   const { settings } = useSystemSettings()
+  const [data, setData] = useState<AccountData>({})
+  const [syncing, setSyncing] = useState(false)
 
-  const transactions = [
-    { id: "HT-992144", date: "2026-08-23", sender: "Carlos Rodriguez", receiver: "Jean Baptiste (MonCash)", amount: "$500.00", status: "completed", dest: "HTG", channel: "MonCash" },
-    { id: "HP-8172", date: "2026-08-22", sender: "Carlos Rodriguez", receiver: "Maria Santos (Santiago)", amount: "$1,200.00", status: "completed", dest: "DOP", channel: "Agente DO" },
-    { id: "HT-881203", date: "2026-08-21", sender: "Carlos Rodriguez", receiver: "Pierre Louis (NatCash)", amount: "$350.00", status: "completed", dest: "HTG", channel: "NatCash" },
-    { id: "HP-7654", date: "2026-08-20", sender: "Maria Garcia", receiver: "Carlos Rodriguez", amount: "$150.00", status: "completed", dest: "USD", channel: "Directo" },
-    { id: "HT-772910", date: "2026-08-19", sender: "Carlos Rodriguez", receiver: "Fritzner Joseph (MonCash)", amount: "$420.00", status: "pending", dest: "HTG", channel: "MonCash" },
+  const refresh = useCallback(async () => {
+    if (!user) return
+    setSyncing(true)
+    try {
+      const response = await fetch("/api/mobile/account", { headers: { Authorization: `Bearer ${await user.getIdToken()}` }, cache: "no-store" })
+      const body = await response.json()
+      if (response.ok && body.success) setData(body)
+    } finally { setSyncing(false) }
+  }, [user])
+
+  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    const timer = window.setInterval(refresh, 15000)
+    const onFocus = () => refresh()
+    window.addEventListener("focus", onFocus)
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", onFocus) }
+  }, [refresh])
+
+  const balance = Number(data.account?.walletBalanceUSD ?? userProfile?.walletBalance ?? 0)
+  const savings = Number(data.account?.savingsBalanceUSD ?? userProfile?.savingsBalance ?? 0)
+  const name = data.account?.name || userProfile?.name || "Cliente"
+  const movements = data.movements || []
+  const actions = [
+    { href: "/dashboard/wallet?tab=send", icon: Send, title: "Enviar", detail: "NatCash o MonCash", color: "bg-blue-600" },
+    { href: "/dashboard/wallet?tab=bank", icon: ArrowDownLeft, title: "Depositar", detail: "Sin comisión", color: "bg-emerald-600" },
+    { href: "/dashboard/wallet?tab=history", icon: Clock3, title: "Movimientos", detail: "Actividad unificada", color: "bg-violet-600" },
+    { href: "/dashboard/profile", icon: UserRound, title: "Mi perfil", detail: "Datos personales", color: "bg-amber-500" },
   ]
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
-      {/* Hero Welcome */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Bienvenido a Hispaniola Pay</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Plataforma integral de remesas transfronterizas (Rep. Dominicana y Haití vía BenCash).
-          </p>
+    <main className="mx-auto max-w-6xl space-y-6 pb-12">
+      <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-slate-950 via-blue-950 to-blue-700 p-6 text-white shadow-xl md:p-8">
+        <div className="flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-xl">
+            <Badge className="mb-4 border-white/15 bg-white/10 text-white hover:bg-white/10">Billetera sincronizada</Badge>
+            <h1 className="text-3xl font-black tracking-tight md:text-4xl">Hola, {name.split(" ")[0]}</h1>
+            <p className="mt-2 text-sm text-blue-100 md:text-base">Deposita, revisa tu saldo y envía a NatCash o MonCash desde un solo lugar.</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/dashboard/wallet?tab=send"><Button className="gap-2 bg-white text-blue-950 hover:bg-blue-50"><Send className="h-4 w-4" /> Enviar remesa</Button></Link>
+              <Link href="/dashboard/wallet?tab=bank"><Button variant="outline" className="gap-2 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"><ArrowDownLeft className="h-4 w-4" /> Depositar 0%</Button></Link>
+            </div>
+          </div>
+          <div className="min-w-[280px] rounded-3xl border border-white/15 bg-white/10 p-5 backdrop-blur">
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-blue-100"><span>Saldo disponible</span><Wallet className="h-5 w-5" /></div>
+            <div className="mt-3 text-4xl font-black">US${balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="mt-3 flex items-center justify-between border-t border-white/15 pt-3 text-xs text-blue-100"><span>Ahorro</span><strong className="text-white">US${savings.toFixed(2)}</strong></div>
+            <div className="mt-2 flex items-center justify-between text-xs text-blue-100"><span>Código</span><strong className="font-mono text-white">{data.account?.clientCode || userProfile?.clientCode || "—"}</strong></div>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard/haiti-remittances">
-            <Button variant="outline" className="text-xs font-bold gap-2 border-red-200 text-red-700 hover:bg-red-50">
-              <Smartphone className="w-4 h-4 text-red-600" />
-              Remesas Haití Directo
-            </Button>
-          </Link>
-          <Link href="/dashboard/send">
-            <Button className="bg-accent hover:bg-accent/90 text-white font-bold gap-2 text-xs">
-              <Send className="w-4 h-4" /> Enviar Dinero
-            </Button>
-          </Link>
+      </section>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {actions.map((action) => <Link key={action.title} href={action.href} className="group rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl text-white ${action.color}`}><action.icon className="h-5 w-5" /></div><div className="font-black text-slate-900">{action.title}</div><div className="mt-1 flex items-center justify-between text-xs text-slate-500"><span>{action.detail}</span><ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></div></Link>)}
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
+        <Card className="overflow-hidden border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between border-b bg-slate-50/70">
+            <div><CardTitle className="text-lg font-black">Actividad reciente</CardTitle><p className="mt-1 text-xs text-slate-500">Movimientos realizados desde la web y el APK.</p></div>
+            <Button variant="ghost" size="sm" onClick={refresh} disabled={syncing} className="gap-2"><RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Actualizar</Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            {movements.length === 0 ? <div className="p-12 text-center"><Wallet className="mx-auto h-9 w-9 text-slate-300" /><p className="mt-3 font-bold text-slate-700">Aún no hay movimientos</p><p className="text-xs text-slate-500">Tus depósitos y remesas aparecerán aquí.</p></div> : movements.slice(0, 8).map((item) => <div key={item.id} className="flex items-center gap-3 border-b px-4 py-4 last:border-0 md:px-6"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${item.direction === "in" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{item.direction === "in" ? <ArrowDownLeft className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-slate-900">{item.title}</div><div className="truncate text-xs text-slate-500">{item.description}</div></div><div className="text-right"><div className={`text-sm font-black ${item.direction === "in" ? "text-emerald-700" : "text-slate-900"}`}>{item.direction === "in" ? "+" : "−"}US${Number(item.amountUSD).toFixed(2)}</div><div className="text-[10px] text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString("es-DO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</div></div></div>)}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card className="border-slate-200 shadow-sm"><CardHeader><CardTitle className="text-lg font-black">Tasas de hoy</CardTitle></CardHeader><CardContent className="space-y-3"><div className="flex items-center justify-between rounded-2xl bg-blue-50 p-4"><div><div className="text-xs font-bold text-blue-700">USD → DOP</div><div className="text-[11px] text-slate-500">República Dominicana</div></div><strong className="text-xl text-blue-950">{Number(settings?.publicRateDOP || 58.5).toFixed(2)}</strong></div><div className="flex items-center justify-between rounded-2xl bg-red-50 p-4"><div><div className="text-xs font-bold text-red-700">USD → HTG</div><div className="text-[11px] text-slate-500">Haití</div></div><strong className="text-xl text-red-950">{Number(settings?.publicRateHTG || 132.2).toFixed(2)}</strong></div></CardContent></Card>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex gap-3"><ShieldCheck className="h-6 w-6 shrink-0 text-emerald-700" /><div><div className="font-black text-emerald-950">Un solo saldo, en todos tus dispositivos</div><p className="mt-1 text-xs leading-5 text-emerald-800">Cada operación se registra en el servidor y se refleja tanto en la web como en Android.</p></div></div></div>
+          <div className="flex items-center gap-2 px-1 text-[11px] text-slate-500"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Última sincronización: {data.refreshedAt ? new Date(data.refreshedAt).toLocaleTimeString("es-DO") : "conectando…"}</div>
         </div>
-      </div>
-
-      {/* Stats Summary Grid */}
-      <StatsGrid role="agent" walletBalance={34250.00} />
-
-      {/* Weekly Remittances Bar Chart (Recharts) */}
-      <WeeklyRemittanceChart />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Recent Transactions */}
-        <div className="lg:col-span-2 space-y-8">
-          <Card className="border-none shadow-md bg-white">
-            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/60">
-              <div>
-                <CardTitle className="text-lg font-bold text-primary">Transacciones Recientes</CardTitle>
-                <CardDescription className="text-xs">Últimos movimientos registrados en el corredor.</CardDescription>
-              </div>
-              <Link href="/dashboard/history">
-                <Button variant="outline" size="sm" className="hidden sm:flex border-primary/20 text-primary hover:bg-secondary text-xs">
-                  Ver todo el historial
-                </Button>
-              </Link>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <div className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Buscar por ID, canal o nombre de destinatario..." className="pl-9 bg-secondary/30 border-none h-9 text-xs" />
-                </div>
-                <div className="rounded-md border border-border overflow-x-auto">
-                  <Table>
-                    <TableHeader className="bg-secondary/30">
-                      <TableRow>
-                        <TableHead>Transacción</TableHead>
-                        <TableHead className="hidden md:table-cell">Destinatario & Canal</TableHead>
-                        <TableHead>Monto</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead className="text-right">Acción</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {transactions.map((tx) => (
-                        <TableRow key={tx.id} className="hover:bg-muted/30 text-xs">
-                          <TableCell>
-                            <div className="font-bold text-primary">{tx.id}</div>
-                            <div className="text-[11px] text-muted-foreground">{tx.date}</div>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className={`text-[10px] py-0 ${
-                                tx.channel === 'MonCash' ? 'bg-red-50 text-red-700 border-red-200' :
-                                tx.channel === 'NatCash' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                'bg-slate-50 text-slate-700'
-                              }`}>
-                                {tx.channel}
-                              </Badge>
-                              <span className="font-medium text-slate-800">{tx.receiver}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-bold text-slate-900">{tx.amount}</TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              tx.status === 'completed' ? 'default' : 
-                              tx.status === 'pending' ? 'secondary' : 'destructive'
-                            } className={
-                              tx.status === 'completed' ? 'bg-green-100 text-green-700 hover:bg-green-100 text-[10px]' :
-                              tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100 text-[10px]' : ''
-                            }>
-                              {tx.status === 'completed' ? 'Completado' : 
-                               tx.status === 'pending' ? 'Pendiente' : 'Cancelado'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Link href="/dashboard/history">
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-accent">
-                                <ArrowRight className="h-4 w-4" />
-                              </Button>
-                            </Link>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Live Exchange Rates & Quick Calculator */}
-        <div className="space-y-6">
-          <CalculatorCard />
-          
-          <Card className="border-none shadow-md bg-white">
-            <CardHeader className="pb-3 border-b border-border/60">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-bold text-primary">Tasas Oficiales del Día</CardTitle>
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 text-[10px]">En Vivo</Badge>
-              </div>
-              <CardDescription className="text-xs">Fijadas por la administración para el público.</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-3">
-               <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white shadow-sm">🇩🇴</div>
-                    <div>
-                      <div className="text-xs font-bold text-blue-950">USD a DOP (Rep. Dom)</div>
-                      <div className="text-[10px] text-muted-foreground">Tasa Público</div>
-                    </div>
-                  </div>
-                  <div className="text-base font-black text-blue-950">{settings?.publicRateDOP?.toFixed(2) || "58.50"}</div>
-               </div>
-
-               <div className="flex items-center justify-between p-3 rounded-xl bg-red-50/50 border border-red-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center font-bold text-xs text-white shadow-sm">🇭🇹</div>
-                    <div>
-                      <div className="text-xs font-bold text-red-950">USD a HTG (Haití)</div>
-                      <div className="text-[10px] text-muted-foreground">MonCash / NatCash</div>
-                    </div>
-                  </div>
-                  <div className="text-base font-black text-red-950">{settings?.publicRateHTG?.toFixed(2) || "132.20"}</div>
-               </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+      </section>
+    </main>
   )
 }

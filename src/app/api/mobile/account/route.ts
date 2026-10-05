@@ -21,9 +21,11 @@ export async function GET(req: NextRequest) {
     const identity = await requireAuthenticatedUser(req);
     const profile = identity.profile;
 
-    const [settingsSnapshot, remittancesSnapshot] = await Promise.all([
+    const [settingsSnapshot, remittancesSnapshot, movementsSnapshot, depositsSnapshot] = await Promise.all([
       adminDb.collection('settings').doc('rates').get(),
       adminDb.collection('mobile_remittances').where('userId', '==', identity.uid).limit(40).get(),
+      adminDb.collection('users').doc(identity.uid).collection('wallet_movements').limit(60).get(),
+      adminDb.collection('wallet_deposits').where('userId', '==', identity.uid).limit(40).get(),
     ]);
 
     const settings = settingsSnapshot.data() || {};
@@ -49,6 +51,38 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
       .slice(0, 25);
 
+    const movements = movementsSnapshot.docs.map((doc) => {
+      const data = doc.data();
+      const type = String(data.type || 'movement');
+      const operator = String(data.operator || (type.includes('moncash') ? 'MonCash' : type.includes('natcash') ? 'NatCash' : ''));
+      return {
+        id: doc.id,
+        type,
+        title: String(data.title || (type === 'deposit' ? 'Depósito acreditado' : operator ? `Remesa ${operator}` : 'Movimiento de billetera')),
+        description: String(data.description || (data.recipientName ? `Enviado a ${data.recipientName}` : 'Movimiento procesado')),
+        direction: data.direction === 'in' ? 'in' : data.direction === 'transfer' ? 'transfer' : 'out',
+        amountUSD: asNumber(data.amountUSD),
+        balanceAfterUSD: data.balanceAfterUSD == null ? (data.newBalance == null ? null : asNumber(data.newBalance)) : asNumber(data.balanceAfterUSD),
+        operator,
+        recipientName: String(data.recipientName || ''),
+        recipientPhone: String(data.recipientPhone || ''),
+        status: String(data.status || 'completed'),
+        referenceId: String(data.referenceId || doc.id),
+        receiptCode: String(data.receiptCode || data.txId || ''),
+        createdAt: jsonDate(data.createdAt) || data.createdAtIso || null,
+      };
+    }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
+    const deposits = depositsSnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id, methodLabel: String(data.methodLabel || 'Depósito'), amount: asNumber(data.amount),
+        currency: String(data.currency || 'USD'), amountCreditedUSD: asNumber(data.amountCreditedUSD),
+        feePercent: 0, reference: String(data.reference || ''), status: String(data.status || 'pending'),
+        rejectionReason: String(data.rejectionReason || ''), createdAt: jsonDate(data.createdAt) || data.createdAtIso || null,
+      };
+    }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
     return NextResponse.json({
       success: true,
       account: {
@@ -69,6 +103,8 @@ export async function GET(req: NextRequest) {
         remittanceFeePercent: asNumber(settings.haitiPublicFeePercent, 8),
       },
       remittances,
+      movements,
+      deposits,
       refreshedAt: new Date().toISOString(),
     });
   } catch (error) {
