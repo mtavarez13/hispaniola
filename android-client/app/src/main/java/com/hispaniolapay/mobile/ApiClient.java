@@ -71,6 +71,14 @@ final class ApiClient {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances", "POST", payload, 65000);
     }
 
+    JSONObject deposits() throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/deposits", "GET", null, 25000);
+    }
+
+    JSONObject createDeposit(JSONObject payload) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/deposits", "POST", payload, 30000);
+    }
+
     JSONObject notifications() throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/notifications", "GET", null, 25000);
     }

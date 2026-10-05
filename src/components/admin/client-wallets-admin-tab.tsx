@@ -34,14 +34,18 @@ import {
   Filter,
   RefreshCw,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  XCircle
 } from "lucide-react";
+
+type MobileDeposit = { id: string; userId: string; clientName: string; clientCode: string; clientEmail: string; methodLabel: string; amount: number; currency: string; amountCreditedUSD: number; reference: string; status: "pending" | "completed" | "rejected"; createdAt: string; rejectionReason?: string };
 
 export function ClientWalletsAdminTab() {
   const { toast } = useToast();
   const { user } = useAuth();
 
   const [deposits, setDeposits] = useState<ClientDepositRecord[]>([]);
+  const [mobileDeposits, setMobileDeposits] = useState<MobileDeposit[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -55,11 +59,17 @@ export function ClientWalletsAdminTab() {
   const [manualNotes, setManualNotes] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     try {
       const all = getClientDeposits();
       setDeposits(all);
+      if (user) {
+        const response = await fetch("/api/admin/deposits", { headers: { Authorization: `Bearer ${await user.getIdToken()}` }, cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || "No se pudieron cargar los depósitos móviles");
+        setMobileDeposits(data.deposits || []);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -69,7 +79,23 @@ export function ClientWalletsAdminTab() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
+
+  const reviewMobileDeposit = async (id: string, action: "approve" | "reject") => {
+    if (!user) return;
+    const reason = action === "reject" ? window.prompt("Motivo del rechazo:", "No se pudo validar la referencia") || "" : "";
+    if (action === "reject" && !reason) return;
+    setProcessing(true);
+    try {
+      const response = await fetch("/api/admin/deposits", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` }, body: JSON.stringify({ id, action, reason }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "No se pudo revisar el depósito");
+      toast({ title: action === "approve" ? "Depósito acreditado" : "Depósito rechazado", description: action === "approve" ? "El saldo se actualizó sin comisión y el cliente fue notificado." : "El cliente recibió el motivo de la revisión." });
+      await loadData();
+    } catch (error) {
+      toast({ variant: "destructive", title: "No se pudo procesar", description: error instanceof Error ? error.message : "Error inesperado" });
+    } finally { setProcessing(false); }
+  };
 
   const filteredDeposits = useMemo(() => {
     return deposits.filter((dep) => {
@@ -243,6 +269,19 @@ export function ClientWalletsAdminTab() {
 
   return (
     <div className="space-y-6">
+      <Card className="border-blue-200 bg-white shadow-sm">
+        <CardHeader className="border-b bg-blue-50/60"><CardTitle className="text-lg font-black flex items-center gap-2"><Wallet className="w-5 h-5 text-blue-700" /> Depósitos solicitados desde la app</CardTitle><CardDescription>Valida la referencia antes de acreditar. Todos estos canales tienen comisión 0%.</CardDescription></CardHeader>
+        <CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Método</TableHead><TableHead>Monto</TableHead><TableHead>Referencia</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acción</TableHead></TableRow></TableHeader><TableBody>
+          {mobileDeposits.length === 0 ? <TableRow><TableCell colSpan={6} className="h-24 text-center text-xs text-muted-foreground">No hay solicitudes móviles.</TableCell></TableRow> : mobileDeposits.map((dep) => <TableRow key={dep.id}>
+            <TableCell><div className="font-bold text-xs">{dep.clientName}</div><div className="text-[10px] text-muted-foreground">{dep.clientCode || dep.clientEmail}</div></TableCell>
+            <TableCell className="text-xs font-semibold">{dep.methodLabel}</TableCell>
+            <TableCell><div className="text-xs font-bold">{Number(dep.amount).toFixed(2)} {dep.currency}</div><div className="text-[10px] text-emerald-700">Acreditar: ${Number(dep.amountCreditedUSD).toFixed(2)} USD · 0%</div></TableCell>
+            <TableCell className="font-mono text-xs">{dep.reference}</TableCell>
+            <TableCell><Badge className={dep.status === "completed" ? "bg-emerald-100 text-emerald-800" : dep.status === "rejected" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}>{dep.status === "completed" ? "Acreditado" : dep.status === "rejected" ? "Rechazado" : "Pendiente"}</Badge></TableCell>
+            <TableCell className="text-right">{dep.status === "pending" ? <div className="flex justify-end gap-1"><Button size="sm" disabled={processing} onClick={() => reviewMobileDeposit(dep.id, "approve")} className="h-8 bg-emerald-600"><CheckCircle2 className="w-3 h-3 mr-1" /> Aprobar</Button><Button size="sm" variant="outline" disabled={processing} onClick={() => reviewMobileDeposit(dep.id, "reject")} className="h-8 text-red-700"><XCircle className="w-3 h-3 mr-1" /> Rechazar</Button></div> : <span className="text-[10px] text-muted-foreground">{dep.id}</span>}</TableCell>
+          </TableRow>)}
+        </TableBody></Table></div></CardContent>
+      </Card>
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-white border-slate-200">

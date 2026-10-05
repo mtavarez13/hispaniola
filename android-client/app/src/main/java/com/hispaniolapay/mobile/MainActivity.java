@@ -209,6 +209,7 @@ public final class MainActivity extends Activity {
         actions.addView(space(dp(12), 1));
         actions.addView(actionTile("▣", "Billetera", "Saldo e historial", GREEN, v -> showWallet()), new LinearLayout.LayoutParams(0, dp(132), 1));
         content.addView(actions, params(-1, -2, 10));
+        content.addView(actionTile("+", "Depositar en billetera", "Cuentas autorizadas · 0% de comisión", CYAN, v -> showDeposit()), params(-1, dp(98), 12));
         View alerts = actionTile("●", "Centro de notificaciones", "Depósitos, remesas y avisos de seguridad", AMBER, v -> showNotifications());
         content.addView(alerts, params(-1, dp(98), 12));
         section("Actividad reciente");
@@ -227,10 +228,139 @@ public final class MainActivity extends Activity {
         savings.addView(text(money(account.optDouble("savingsBalanceUSD", 0)), 27, INK, Typeface.BOLD), params(-1, -2, 8));
         savings.addView(text("Fondos separados de tu saldo para envíos", 13, MUTED, Typeface.NORMAL), params(-1, -2, 4));
         content.addView(savings, params(-1, -2, 12));
+        Button deposit = primaryButton("+ Depositar sin comisión");
+        deposit.setOnClickListener(v -> showDeposit());
+        content.addView(deposit, params(-1, dp(54), 12));
         double available = account.optDouble("walletBalanceUSD", 0);
         info("Equivalencias", String.format(Locale.US, "RD$ %,.2f DOP   ·   %,.0f HTG", available * rates.optDouble("dopPerUsd", 58.5), available * rates.optDouble("htgPerUsd", 132.2)));
         section("Movimientos y remesas");
         addRecent(20);
+    }
+
+    private void showDeposit() {
+        activeScreen = "Depositar";
+        showLoading("Cargando cuentas autorizadas…");
+        executor.execute(() -> {
+            try {
+                JSONObject response = api.deposits();
+                runOnUiThread(() -> renderDeposit(response));
+            } catch (Exception error) {
+                runOnUiThread(() -> { showWallet(); errorDialog("No se pudieron cargar los métodos", friendly(error)); });
+            }
+        });
+    }
+
+    private void renderDeposit(JSONObject response) {
+        renderShell("Depositar en billetera", "Cuentas autorizadas · comisión 0%");
+        info("Sin cargos", "El 100% del valor validado se acredita a tu billetera y queda disponible para enviar remesas.");
+        JSONArray methods = response.optJSONArray("methods");
+        if (methods == null || methods.length() == 0) {
+            info("Métodos no disponibles", "La administración aún no ha publicado cuentas autorizadas.");
+            return;
+        }
+        final JSONObject[] selected = {null};
+        section("Elige dónde depositar");
+        LinearLayout methodList = column();
+        TextView accountInfo = text("", 13, INK, Typeface.NORMAL);
+        accountInfo.setTextIsSelectable(true);
+        EditText amount = input("Monto depositado", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        EditText reference = input("Referencia / comprobante", InputType.TYPE_CLASS_TEXT);
+        TextView creditPreview = text("Acreditación: US$0.00 · Comisión: US$0.00", 13, GREEN, Typeface.BOLD);
+        double dopPerUsd = response.optDouble("dopPerUsd", 58.5);
+        for (int i = 0; i < methods.length(); i++) {
+            JSONObject method = methods.optJSONObject(i);
+            if (method == null) continue;
+            boolean enabled = method.optBoolean("enabled", true);
+            Button option = secondaryButton(method.optString("label") + " · " + method.optString("currency", "USD"));
+            option.setEnabled(enabled);
+            if (!enabled) option.setText(method.optString("label") + " · Pendiente de configurar");
+            if (selected[0] == null && enabled) selected[0] = method;
+            option.setOnClickListener(v -> {
+                selected[0] = method;
+                accountInfo.setText(depositMethodDetails(method));
+                amount.setHint("Monto depositado en " + method.optString("currency", "USD"));
+                updateDepositPreview(creditPreview, amount.getText().toString(), method.optString("currency", "USD"), dopPerUsd);
+            });
+            methodList.addView(option, params(-1, dp(50), i == 0 ? 0 : 8));
+        }
+        content.addView(methodList);
+        if (selected[0] == null) {
+            info("Métodos no configurados", "Solicita a la administración activar al menos una cuenta autorizada.");
+            return;
+        }
+        accountInfo.setText(depositMethodDetails(selected[0]));
+        LinearLayout details = card();
+        details.addView(text("DATOS DE LA CUENTA AUTORIZADA", 11, BLUE, Typeface.BOLD));
+        details.addView(accountInfo, params(-1, -2, 8));
+        content.addView(details, params(-1, -2, 12));
+        section("Reportar el depósito");
+        amount.setHint("Monto depositado en " + selected[0].optString("currency", "USD"));
+        content.addView(amount, params(-1, dp(56), 0));
+        content.addView(reference, params(-1, dp(56), 10));
+        LinearLayout preview = card();
+        preview.addView(creditPreview);
+        preview.addView(text("La referencia será verificada antes de acreditar el saldo.", 11, MUTED, Typeface.NORMAL), params(-1, -2, 5));
+        content.addView(preview, params(-1, -2, 12));
+        amount.addTextChangedListener(new SimpleWatcher() { @Override public void afterTextChanged(Editable editable) { updateDepositPreview(creditPreview, editable.toString(), selected[0].optString("currency", "USD"), dopPerUsd); } });
+        Button submit = primaryButton("Enviar depósito para validar");
+        submit.setOnClickListener(v -> {
+            double value = parseAmount(amount.getText().toString());
+            String ref = reference.getText().toString().trim();
+            if (value <= 0 || ref.length() < 4) { errorDialog("Revisa los datos", "Escribe el monto depositado y la referencia del comprobante."); return; }
+            JSONObject method = selected[0];
+            new AlertDialog.Builder(this).setTitle("Confirmar depósito")
+                    .setMessage(method.optString("label") + "\n" + String.format(Locale.US, "%,.2f %s", value, method.optString("currency")) + "\nReferencia: " + ref + "\n\nComisión: 0%")
+                    .setNegativeButton("Cancelar", null).setPositiveButton("Enviar", (d, w) -> submitDeposit(submit, method.optString("id"), value, ref)).show();
+        });
+        content.addView(submit, params(-1, dp(56), 2));
+        renderDepositHistory(response.optJSONArray("deposits"));
+    }
+
+    private String depositMethodDetails(JSONObject method) {
+        String account = method.optString("account");
+        return method.optString("label") + "\nTitular: " + method.optString("recipient", "HispaniolaPay") + "\nCuenta / destino: " + (account.isEmpty() ? "Pendiente de configurar" : account) + "\n" + method.optString("detail") + "\n\n" + method.optString("instructions");
+    }
+
+    private void updateDepositPreview(TextView view, String raw, String currency, double dopPerUsd) {
+        double value = parseAmount(raw);
+        double usdValue = "DOP".equals(currency) ? value / dopPerUsd : value;
+        view.setText("Acreditación estimada: " + money(round(usdValue)) + " · Comisión: US$0.00");
+    }
+
+    private void submitDeposit(Button button, String methodId, double amount, String reference) {
+        button.setEnabled(false); button.setText("Registrando depósito…");
+        executor.execute(() -> {
+            try {
+                JSONObject response = api.createDeposit(new JSONObject().put("methodId", methodId).put("amount", amount).put("reference", reference));
+                JSONObject deposit = response.optJSONObject("deposit");
+                String depositStatus = deposit == null ? "pending" : deposit.optString("status", "pending");
+                String statusLabel = "completed".equals(depositStatus) ? "ACREDITADO" : "rejected".equals(depositStatus) ? "RECHAZADO" : "PENDIENTE DE VALIDACIÓN";
+                try { accountData = api.account(); } catch (Exception ignored) { }
+                runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Depósito recibido")
+                        .setMessage("Referencia HispaniolaPay: " + (deposit == null ? "" : deposit.optString("id")) + "\n\nEstado: " + statusLabel + "\nComisión: 0%\n\nTe notificaremos cuando el dinero esté disponible para remesas.")
+                        .setCancelable(false).setPositiveButton("Ver estado", (d, w) -> showDeposit()).show());
+            } catch (Exception error) {
+                runOnUiThread(() -> { button.setEnabled(true); button.setText("Enviar depósito para validar"); errorDialog("No se pudo registrar", friendly(error)); });
+            }
+        });
+    }
+
+    private void renderDepositHistory(JSONArray deposits) {
+        section("Mis depósitos recientes");
+        if (deposits == null || deposits.length() == 0) { info("Sin depósitos", "Tus solicitudes aparecerán aquí."); return; }
+        for (int i = 0; i < deposits.length(); i++) {
+            JSONObject item = deposits.optJSONObject(i); if (item == null) continue;
+            String status = item.optString("status", "pending");
+            String statusLabel = "completed".equals(status) ? "ACREDITADO" : "rejected".equals(status) ? "RECHAZADO" : "PENDIENTE";
+            int color = "completed".equals(status) ? GREEN : "rejected".equals(status) ? RED : AMBER;
+            LinearLayout panel = card();
+            LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(text(item.optString("methodLabel", "Depósito"), 14, INK, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1));
+            row.addView(text(statusLabel, 11, color, Typeface.BOLD)); panel.addView(row);
+            panel.addView(text(String.format(Locale.US, "%,.2f %s · Ref. %s", item.optDouble("amount"), item.optString("currency", "USD"), item.optString("reference")), 12, MUTED, Typeface.NORMAL), params(-1, -2, 6));
+            if ("rejected".equals(status) && !item.optString("rejectionReason").isEmpty()) panel.addView(text(item.optString("rejectionReason"), 11, RED, Typeface.NORMAL), params(-1, -2, 5));
+            content.addView(panel, params(-1, -2, 8));
+        }
     }
 
     private void showSend() {
@@ -436,6 +566,7 @@ public final class MainActivity extends Activity {
         LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5), dp(5), dp(5), dp(5)); nav.setBackgroundColor(Color.WHITE);
         nav.addView(navButton("⌂", "Inicio", this::showHome), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("▣", "Billetera", this::showWallet), new LinearLayout.LayoutParams(0, -1, 1));
+        nav.addView(navButton("+", "Depositar", this::showDeposit), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("↗", "Enviar", this::showSend), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("≡", "Historial", this::showHistory), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("●", "Avisos", this::showNotifications), new LinearLayout.LayoutParams(0, -1, 1));

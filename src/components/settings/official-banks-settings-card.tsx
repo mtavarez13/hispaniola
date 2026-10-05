@@ -9,8 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useSystemSettings, DEFAULT_OFFICIAL_BANK_ACCOUNTS } from "@/lib/settings-context"
-import { OfficialBankAccount } from "@/lib/types"
+import { useSystemSettings, DEFAULT_OFFICIAL_BANK_ACCOUNTS, DEFAULT_US_REMITTANCE_ACCOUNTS } from "@/lib/settings-context"
+import { OfficialBankAccount, USRemittanceAccounts } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { 
   Landmark, 
@@ -45,6 +45,7 @@ export function OfficialBanksSettingsCard() {
   const { toast } = useToast()
 
   const [accounts, setAccounts] = useState<OfficialBankAccount[]>([])
+  const [digitalAccounts, setDigitalAccounts] = useState<USRemittanceAccounts>(DEFAULT_US_REMITTANCE_ACCOUNTS)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -70,6 +71,7 @@ export function OfficialBanksSettingsCard() {
     } else {
       setAccounts(DEFAULT_OFFICIAL_BANK_ACCOUNTS)
     }
+    setDigitalAccounts({ ...DEFAULT_US_REMITTANCE_ACCOUNTS, ...(settings?.usRemittanceAccounts || {}) })
   }, [settings])
 
   const openCreateDialog = () => {
@@ -181,6 +183,7 @@ export function OfficialBanksSettingsCard() {
     try {
       const ok = await updateSettings({
         officialBankAccounts: accounts,
+        usRemittanceAccounts: digitalAccounts,
       })
 
       if (ok) {
@@ -243,7 +246,7 @@ export function OfficialBanksSettingsCard() {
               Cuentas Oficiales de Bancos Dominicanos
             </CardTitle>
             <CardDescription className="text-slate-300 text-xs mt-1">
-              Configura las cuentas bancarias de la República Dominicana donde los clientes y subagentes depositan dinero para las remesas. Estas cuentas son copiables con 1 clic para su facilidad.
+              Configura las cuentas autorizadas que aparecen en la web y en la app móvil para depósitos sin comisión.
             </CardDescription>
           </div>
 
@@ -280,6 +283,24 @@ export function OfficialBanksSettingsCard() {
             <Badge className="bg-emerald-600 text-white text-[10px]">Sincronizado</Badge>
           </div>
         )}
+
+        <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 space-y-4">
+          <div>
+            <h3 className="font-black text-slate-900">Métodos digitales para depósitos móviles</h3>
+            <p className="text-xs text-slate-600">Zelle, PayPal y Binance se acreditan con 0% de comisión después de validar la referencia.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1"><Label className="text-xs font-bold">Correo Zelle</Label><Input value={digitalAccounts.zelleEmail} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, zelleEmail: e.target.value })} placeholder="pagos@empresa.com" /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Teléfono Zelle</Label><Input value={digitalAccounts.zellePhone} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, zellePhone: e.target.value })} placeholder="+1 305..." /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Titular Zelle</Label><Input value={digitalAccounts.zelleHolder} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, zelleHolder: e.target.value })} /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Cuenta PayPal</Label><Input value={digitalAccounts.payPalEmail} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, payPalEmail: e.target.value })} placeholder="pagos@empresa.com" /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Enlace PayPal</Label><Input value={digitalAccounts.payPalLink} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, payPalLink: e.target.value })} placeholder="https://paypal.me/..." /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Binance Pay ID</Label><Input value={digitalAccounts.binancePayId || ""} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, binancePayId: e.target.value })} placeholder="Pay ID autorizado" /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Titular Binance</Label><Input value={digitalAccounts.binanceHolder || ""} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, binanceHolder: e.target.value })} placeholder="Hispaniola Pay" /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Red / modalidad Binance</Label><Input value={digitalAccounts.binanceNetwork || ""} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, binanceNetwork: e.target.value })} placeholder="Binance Pay (USDT)" /></div>
+          </div>
+          <p className="text-[11px] text-amber-800">Binance solo se mostrará habilitado en el móvil cuando se guarde un Pay ID oficial.</p>
+        </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
           <div className="text-xs text-slate-600">

@@ -11,8 +11,8 @@ android {
         applicationId = "com.hispaniolapay.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.2.0-client"
+        versionCode = 7
+        versionName = "2.3.0-wallet"
 
         val defaultAppUrl = "https://hispaniola--studio-4779362907-870c5.us-east4.hosted.app"
         val appUrl = providers.gradleProperty("HISPANIOLA_APP_URL").orElse(defaultAppUrl).get()

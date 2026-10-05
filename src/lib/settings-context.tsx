@@ -24,6 +24,9 @@ export const DEFAULT_US_REMITTANCE_ACCOUNTS: USRemittanceAccounts = {
   cashAppHolder: "Hispaniola Pay Remittance",
   payPalEmail: "pagos@hispaniolapay.com",
   payPalLink: "https://paypal.me/hispaniolapay",
+  binancePayId: "",
+  binanceHolder: "Hispaniola Pay",
+  binanceNetwork: "Binance Pay (USDT)",
   instructions: "Envía en USD desde tu app favorita (Zelle, Cash App o PayPal). Incluye en la nota tu nombre y número de destino (MonCash / Natcash / Cuenta RD).",
   active: true,
 }

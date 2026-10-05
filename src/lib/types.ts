@@ -246,6 +246,9 @@ export interface USRemittanceAccounts {
   cashAppHolder: string;
   payPalEmail: string;
   payPalLink: string;
+  binancePayId?: string;
+  binanceHolder?: string;
+  binanceNetwork?: string;
   instructions?: string;
   active: boolean;
 }
