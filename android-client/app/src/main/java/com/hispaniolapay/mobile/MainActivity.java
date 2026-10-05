@@ -1,5 +1,7 @@
 package com.hispaniolapay.mobile;
 
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -640,7 +642,29 @@ public final class MainActivity extends Activity {
     private Button operatorButton(String label, boolean selected) { Button button = new Button(this); button.setText(label); button.setTextSize(14); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); styleOperator(button, selected); return button; }
     private void styleOperator(Button button, boolean selected) { button.setTextColor(selected ? Color.WHITE : BLUE); button.setBackground(round(selected ? BLUE : Color.WHITE, 14, selected ? BLUE : LINE, 1)); }
 
-    private void showLoading(String label) { FrameLayout frame = new FrameLayout(this); frame.setBackgroundColor(BG); LinearLayout box = column(); box.setGravity(Gravity.CENTER); box.addView(new ProgressBar(this), new LinearLayout.LayoutParams(dp(48), dp(48))); box.addView(text(label, 14, MUTED, Typeface.BOLD), params(-2, -2, 14)); frame.addView(box, new FrameLayout.LayoutParams(-1, -1)); setContentView(frame); }
+    private void showLoading(String label) {
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackground(roundGradient(Color.rgb(244, 249, 255), Color.rgb(226, 240, 255), 0));
+        LinearLayout box = column(); box.setGravity(Gravity.CENTER); box.setPadding(dp(24), dp(30), dp(24), dp(30));
+        ImageView logo = brandImage(); box.addView(logo, new LinearLayout.LayoutParams(dp(92), dp(92)));
+        TextView moneyFlow = text("$   RD$   HTG", 16, GREEN, Typeface.BOLD); moneyFlow.setGravity(Gravity.CENTER); box.addView(moneyFlow, params(-1, -2, 20));
+        ProgressBar progress = new ProgressBar(this); box.addView(progress, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        TextView message = text(label, 14, MUTED, Typeface.BOLD); message.setGravity(Gravity.CENTER); box.addView(message, params(-1, -2, 12));
+        box.addView(text("Conectando tu dinero de forma segura", 11, Color.rgb(111, 128, 151), Typeface.NORMAL), params(-2, -2, 6));
+        frame.addView(box, new FrameLayout.LayoutParams(-1, -1)); setContentView(frame);
+
+        ObjectAnimator logoUp = ObjectAnimator.ofFloat(logo, View.TRANSLATION_Y, 0f, -dp(10), 0f);
+        logoUp.setDuration(1300); logoUp.setRepeatCount(ObjectAnimator.INFINITE);
+        ObjectAnimator logoPulseX = ObjectAnimator.ofFloat(logo, View.SCALE_X, 1f, 1.07f, 1f);
+        ObjectAnimator logoPulseY = ObjectAnimator.ofFloat(logo, View.SCALE_Y, 1f, 1.07f, 1f);
+        logoPulseX.setDuration(1300); logoPulseY.setDuration(1300);
+        logoPulseX.setRepeatCount(ObjectAnimator.INFINITE); logoPulseY.setRepeatCount(ObjectAnimator.INFINITE);
+        ObjectAnimator moneyMove = ObjectAnimator.ofFloat(moneyFlow, View.TRANSLATION_X, -dp(16), dp(16), -dp(16));
+        ObjectAnimator moneyFade = ObjectAnimator.ofFloat(moneyFlow, View.ALPHA, .35f, 1f, .35f);
+        moneyMove.setDuration(1800); moneyFade.setDuration(1800);
+        moneyMove.setRepeatCount(ObjectAnimator.INFINITE); moneyFade.setRepeatCount(ObjectAnimator.INFINITE);
+        AnimatorSet animation = new AnimatorSet(); animation.playTogether(logoUp, logoPulseX, logoPulseY, moneyMove, moneyFade); animation.start();
+    }
     private JSONObject account() { JSONObject value = accountData == null ? null : accountData.optJSONObject("account"); return value == null ? new JSONObject() : value; }
     private JSONObject rates() { JSONObject value = accountData == null ? null : accountData.optJSONObject("rates"); return value == null ? new JSONObject() : value; }
     private String friendly(Exception error) { String message = error.getMessage(); if (message == null || message.trim().isEmpty()) return "Ocurrió un error inesperado. Intenta nuevamente."; if (message.contains("Unable to resolve host")) return "Sin conexión a internet."; if (message.toLowerCase(Locale.ROOT).contains("timeout")) return "La operación tardó demasiado. No la repitas; revisa el historial."; return message; }
