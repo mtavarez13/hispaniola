@@ -160,8 +160,16 @@ public final class MainActivity extends Activity {
                 try { api.loginWithGoogle(idToken); runOnUiThread(() -> loadAccount(false)); }
                 catch (Exception error) { runOnUiThread(() -> { googleClient.signOut(); showLogin(); errorDialog("No pudimos acceder con Google", friendly(error)); }); }
             });
+        } catch (ApiException error) {
+            int code = error.getStatusCode();
+            String detail;
+            if (code == 10) detail = "La firma de esta aplicación no estaba autorizada en Google. Instala la versión actualizada de HispaniolaPay.";
+            else if (code == 7) detail = "No se pudo conectar con Google. Revisa tu internet e intenta nuevamente.";
+            else if (code == 12501) detail = "La selección de la cuenta fue cancelada.";
+            else detail = "Google no pudo iniciar la sesión (código " + code + "). Intenta nuevamente.";
+            errorDialog("No se pudo acceder con Google", detail);
         } catch (Exception error) {
-            errorDialog("Acceso con Google cancelado", "No se completó la selección de la cuenta.");
+            errorDialog("No se pudo acceder con Google", friendly(error));
         }
     }
 

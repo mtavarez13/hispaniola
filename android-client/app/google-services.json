@@ -13,11 +13,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "468788303839-44k75qgv3mhd7afnd2m5k6o2fb2vng6b.apps.googleusercontent.com",
+          "client_id": "468788303839-geld11d8k09ftjkn0u93cvkjtgssp7bo.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.hispaniolapay.mobile",
-            "certificate_hash": "61aacfb1ac764bac69c6dcdf2468ef2341e5101f"
+            "certificate_hash": "61aacfb1ac764bac69c6dcdcf2468ef2341e5101"
           }
         },
         { "client_id": "468788303839-0qg41gklpc7s22lris4nlhb59e7p975d.apps.googleusercontent.com", "client_type": 3 }
