@@ -287,17 +287,20 @@ export function OfficialBanksSettingsCard() {
         <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 space-y-4">
           <div>
             <h3 className="font-black text-slate-900">Métodos digitales para depósitos móviles</h3>
-            <p className="text-xs text-slate-600">Zelle, PayPal y Binance se acreditan con 0% de comisión después de validar la referencia.</p>
+            <p className="text-xs text-slate-600">Cash App, Zelle, PayPal y Binance se acreditan con 0% de comisión después de validar la referencia. Al guardar, los datos se actualizan automáticamente en la página principal.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1"><Label className="text-xs font-bold">Correo Zelle</Label><Input value={digitalAccounts.zelleEmail} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, zelleEmail: e.target.value })} placeholder="pagos@empresa.com" /></div>
             <div className="space-y-1"><Label className="text-xs font-bold">Teléfono Zelle</Label><Input value={digitalAccounts.zellePhone} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, zellePhone: e.target.value })} placeholder="+1 305..." /></div>
             <div className="space-y-1"><Label className="text-xs font-bold">Titular Zelle</Label><Input value={digitalAccounts.zelleHolder} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, zelleHolder: e.target.value })} /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Cashtag Cash App</Label><Input value={digitalAccounts.cashAppTag} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, cashAppTag: e.target.value })} placeholder="$HispaniolaPay" /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Titular Cash App</Label><Input value={digitalAccounts.cashAppHolder} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, cashAppHolder: e.target.value })} /></div>
             <div className="space-y-1"><Label className="text-xs font-bold">Cuenta PayPal</Label><Input value={digitalAccounts.payPalEmail} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, payPalEmail: e.target.value })} placeholder="pagos@empresa.com" /></div>
             <div className="space-y-1"><Label className="text-xs font-bold">Enlace PayPal</Label><Input value={digitalAccounts.payPalLink} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, payPalLink: e.target.value })} placeholder="https://paypal.me/..." /></div>
             <div className="space-y-1"><Label className="text-xs font-bold">Binance Pay ID</Label><Input value={digitalAccounts.binancePayId || ""} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, binancePayId: e.target.value })} placeholder="Pay ID autorizado" /></div>
             <div className="space-y-1"><Label className="text-xs font-bold">Titular Binance</Label><Input value={digitalAccounts.binanceHolder || ""} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, binanceHolder: e.target.value })} placeholder="Hispaniola Pay" /></div>
             <div className="space-y-1"><Label className="text-xs font-bold">Red / modalidad Binance</Label><Input value={digitalAccounts.binanceNetwork || ""} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, binanceNetwork: e.target.value })} placeholder="Binance Pay (USDT)" /></div>
+            <div className="space-y-1 md:col-span-2"><Label className="text-xs font-bold">Instrucciones públicas</Label><Input value={digitalAccounts.instructions || ""} onChange={(e) => setDigitalAccounts({ ...digitalAccounts, instructions: e.target.value })} placeholder="Indica cómo identificar y validar el depósito" /></div>
           </div>
           <p className="text-[11px] text-amber-800">Binance solo se mostrará habilitado en el móvil cuando se guarde un Pay ID oficial.</p>
         </div>

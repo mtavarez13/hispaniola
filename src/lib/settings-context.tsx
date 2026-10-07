@@ -27,7 +27,7 @@ export const DEFAULT_US_REMITTANCE_ACCOUNTS: USRemittanceAccounts = {
   binancePayId: "",
   binanceHolder: "Hispaniola Pay",
   binanceNetwork: "Binance Pay (USDT)",
-  instructions: "Envía en USD desde tu app favorita (Zelle, Cash App o PayPal). Incluye en la nota tu nombre y número de destino (MonCash / Natcash / Cuenta RD).",
+  instructions: "Envía desde Zelle, Cash App, PayPal o Binance Pay. Incluye en la nota tu nombre y número de destino (MonCash / Natcash / Cuenta RD).",
   active: true,
 }
 

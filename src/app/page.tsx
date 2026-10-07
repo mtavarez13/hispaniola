@@ -87,7 +87,7 @@ export default function Home() {
           🇺🇸 NUEVO DESDE ESTADOS UNIDOS:
         </span>
         <span>
-          Recibimos remesas vía <strong>Cash App ($)</strong>, <strong>Zelle</strong> y <strong>PayPal</strong> con entrega directa a MonCash y Natcash en Haití y cuentas en RD.
+          Recibimos remesas vía <strong>Cash App ($)</strong>, <strong>Zelle</strong>, <strong>PayPal</strong> y <strong>Binance Pay</strong> con entrega directa a MonCash y Natcash en Haití y cuentas en RD.
         </span>
         <a href="#bancos-oficiales" className="underline font-bold text-emerald-300 hover:text-emerald-200 ml-1">
           Ver Cuentas USA →
@@ -293,7 +293,7 @@ export default function Home() {
 
               {/* Description */}
               <p className="text-slate-600 text-base sm:text-lg leading-relaxed max-w-2xl font-normal">
-                Transfiere dinero a tus seres queridos en minutos con <strong>tasa preferencial garantizada</strong>. Aceptamos <strong>Cash App, Zelle y PayPal</strong> desde Estados Unidos en dólares (USD), o depósitos en RD (DOP/USD) vía <strong>Banreservas, BHD y Popular</strong>. Tu familia retira al instante en su teléfono en todo Haití.
+                Transfiere dinero a tus seres queridos en minutos con <strong>tasa preferencial garantizada</strong>. Aceptamos <strong>Cash App, Zelle, PayPal y Binance Pay</strong>, o depósitos en RD (DOP/USD) vía <strong>Banreservas, BHD y Popular</strong>. Tu familia retira al instante en su teléfono en todo Haití.
               </p>
 
               {/* Call to Actions */}
@@ -342,6 +342,14 @@ export default function Home() {
                       P
                     </div>
                     <span>PayPal</span>
+                  </div>
+
+                  {/* Binance Pay */}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs">
+                    <div className="w-5 h-5 rounded-md bg-[#F3BA2F] text-slate-950 font-black text-[13px] flex items-center justify-center" aria-hidden="true">
+                      ◆
+                    </div>
+                    <span>Binance Pay</span>
                   </div>
 
                   {/* Banreservas Badge */}
@@ -425,7 +433,7 @@ export default function Home() {
               Cuentas en República Dominicana 🇩🇴 y Estados Unidos 🇺🇸
             </h2>
             <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">
-              Copia el número de cuenta o identificador con 1 solo clic. En RD transfiere vía ACH/Pagos al Instante BCRD (Banreservas, BHD, Popular). En USA envía en USD por <strong>Cash App</strong>, <strong>Zelle</strong> o <strong>PayPal</strong>.
+              Copia el número de cuenta o identificador con 1 solo clic. En RD transfiere vía ACH/Pagos al Instante BCRD (Banreservas, BHD, Popular). También puedes enviar por <strong>Cash App</strong>, <strong>Zelle</strong>, <strong>PayPal</strong> o <strong>Binance Pay</strong>.
             </p>
           </div>
 

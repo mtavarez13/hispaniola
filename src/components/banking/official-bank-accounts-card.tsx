@@ -51,7 +51,10 @@ export function OfficialBankAccountsCard({
     cashAppHolder: "Hispaniola Pay Remittance",
     payPalEmail: "pagos@hispaniolapay.com",
     payPalLink: "https://paypal.me/hispaniolapay",
-    instructions: "Envía en USD desde tu app favorita (Zelle, Cash App o PayPal). Incluye en la nota tu nombre y número de destino (MonCash / Natcash / Cuenta RD).",
+    binancePayId: "",
+    binanceHolder: "Hispaniola Pay",
+    binanceNetwork: "Binance Pay (USDT)",
+    instructions: "Envía desde Zelle, Cash App, PayPal o Binance Pay. Incluye en la nota tu nombre y número de destino (MonCash / Natcash / Cuenta RD).",
     active: true,
   }
 
@@ -149,7 +152,7 @@ _Envía el comprobante para procesar la acreditación a MonCash / NatCash._`
               }`}
             >
               <span>🇺🇸</span>
-              <span>USA (CashApp / Zelle / PayPal)</span>
+              <span>Digital (Cash App / Zelle / PayPal / Binance)</span>
             </Button>
           </div>
         </div>
@@ -177,8 +180,8 @@ _Envía el comprobante para procesar la acreditación a MonCash / NatCash._`
               </div>
             </div>
 
-            {/* Grid con las 3 plataformas principales USA */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Grid con las plataformas digitales oficiales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
               
               {/* 1. CASH APP */}
               <div className="group rounded-2xl border-2 border-emerald-500/30 bg-gradient-to-b from-emerald-50/40 via-white to-white p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4">
@@ -343,13 +346,48 @@ _Envía el comprobante para procesar la acreditación a MonCash / NatCash._`
                 </div>
               </div>
 
+              {/* 4. BINANCE PAY */}
+              <div className="group rounded-2xl border-2 border-amber-400/50 bg-gradient-to-b from-amber-50/70 via-white to-white p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-11 h-11 rounded-xl bg-[#F3BA2F] flex items-center justify-center text-slate-950 font-black text-2xl shadow-md shadow-[#F3BA2F]/30" aria-hidden="true">◆</div>
+                      <div>
+                        <h4 className="font-black text-slate-900 text-base">Binance Pay</h4>
+                        <p className="text-[11px] font-bold text-amber-700">Pago digital autorizado</p>
+                      </div>
+                    </div>
+                    <Badge className="bg-[#F3BA2F]/25 text-amber-900 border-[#F3BA2F]/60 font-black text-[10px]">Global</Badge>
+                  </div>
+                  <p className="text-xs text-slate-600">Envía mediante Binance Pay usando únicamente el Pay ID oficial configurado por la administración.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="bg-slate-100 p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Binance Pay ID</span>
+                      <span className="font-mono text-sm font-black text-slate-900 block truncate">{usAccounts.binancePayId || "Pendiente de configuración"}</span>
+                    </div>
+                    {usAccounts.binancePayId && (
+                      <Button size="sm" onClick={() => handleCopyText(usAccounts.binancePayId || "", "Binance Pay ID", "binance")} className="h-8 px-3 bg-[#F3BA2F] hover:bg-[#d9a51e] text-slate-950 font-bold text-xs rounded-lg">
+                        {copiedId === "binance" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-500 pt-1 space-y-0.5">
+                    <div>Titular: <strong>{usAccounts.binanceHolder || "Hispaniola Pay"}</strong></div>
+                    <div>Modalidad: <strong>{usAccounts.binanceNetwork || "Binance Pay (USDT)"}</strong></div>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             {/* Nota de envío */}
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs flex items-start gap-2">
               <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
               <span>
-                <strong>Importante para envíos desde USA:</strong> Al realizar el pago en Zelle, Cash App o PayPal, coloca en la nota tu nombre y el número MonCash/Natcash en Haití (ej: <em>509-3711-2233</em>). Guarda tu comprobante para validación inmediata.
+                <strong>Importante:</strong> Al realizar el pago en Zelle, Cash App, PayPal o Binance Pay, coloca en la nota tu nombre y el número MonCash/Natcash en Haití (ej: <em>509-3711-2233</em>). Guarda tu comprobante para validación inmediata.
               </span>
             </div>
           </div>
