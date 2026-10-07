@@ -345,7 +345,7 @@ export default function HaitiRemittancesPage() {
   }, [settings])
 
   const rateHTG = settings?.publicRateHTG ?? 132.20
-  const publicFeePct = settings?.haitiPublicFeePercent ?? 8.0
+  const publicFeePct = userProfile?.remittanceFeePercent ?? settings?.haitiPublicFeePercent ?? 8.0
   const bencashSharePct = settings?.haitiBencashSharePercent ?? 3.0
   const subAgentSharePct = settings?.haitiSubAgentSharePercent ?? 2.0
   const hispaniolaSharePct = settings?.haitiHispaniolaSharePercent ?? 3.0

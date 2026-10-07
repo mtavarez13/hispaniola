@@ -47,6 +47,7 @@ export async function requireAuthenticatedUser(req: NextRequest): Promise<Authen
       walletBalance: 0,
       savingsBalance: 0,
       primaryCurrency: 'USD',
+      remittanceFeePercent: 8,
       benefitRatePercent: 0,
       benefitAccruedDOP: 0,
       authProvider: decoded.firebase?.sign_in_provider || 'firebase',

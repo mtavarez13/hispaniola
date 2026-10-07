@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
 
     const settings = settingsSnapshot.data() || {};
     const primaryCurrency = profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
+    const remittanceFeePercent = asNumber(profile.remittanceFeePercent, asNumber(settings.haitiPublicFeePercent, 8));
     const remittances = remittancesSnapshot.docs
       .map((doc) => {
         const data = doc.data();
@@ -102,6 +103,7 @@ export async function GET(req: NextRequest) {
         idNumber: String(profile.idNumber || ''),
         country: String(profile.country || 'DO'),
         primaryCurrency,
+        remittanceFeePercent,
         walletBalance: asNumber(profile.walletBalance),
         savingsBalance: asNumber(profile.savingsBalance),
         walletBalanceUSD: primaryCurrency === 'DOP' ? asNumber(profile.walletBalance) / asNumber(settings.publicRateDOP, 58.5) : asNumber(profile.walletBalance),
@@ -112,7 +114,7 @@ export async function GET(req: NextRequest) {
       rates: {
         htgPerUsd: asNumber(settings.publicRateHTG, 132.2),
         dopPerUsd: asNumber(settings.publicRateDOP, 58.5),
-        remittanceFeePercent: asNumber(settings.haitiPublicFeePercent, 8),
+        remittanceFeePercent,
       },
       remittances,
       movements,

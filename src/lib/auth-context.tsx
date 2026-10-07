@@ -163,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       walletBalance: 0.00,
       savingsBalance: 0.00,
       primaryCurrency: 'USD',
+      remittanceFeePercent: 8,
       benefitRatePercent: 0,
       benefitAccruedDOP: 0,
       phone: extraData?.phone || "+1 (829) 450-2211",
@@ -196,6 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.walletBalance === undefined) data.walletBalance = 0.00;
         if (data.savingsBalance === undefined) data.savingsBalance = 0.00;
         if (!data.primaryCurrency) data.primaryCurrency = 'USD';
+        if (data.remittanceFeePercent === undefined) data.remittanceFeePercent = 8;
         if (data.benefitRatePercent === undefined) data.benefitRatePercent = 0;
         if (data.benefitAccruedDOP === undefined) data.benefitAccruedDOP = 0;
         setUserProfile(data);
@@ -217,6 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           walletBalance: 0.00,
           savingsBalance: 0.00,
           primaryCurrency: 'USD',
+          remittanceFeePercent: 8,
           benefitRatePercent: 0,
           benefitAccruedDOP: 0,
           phone: extraData?.phone || "+1 (829) 450-2211",

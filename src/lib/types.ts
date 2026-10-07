@@ -13,6 +13,7 @@ export interface UserProfile {
   savingsBalance?: number; // Bolsillo protegido en la moneda principal del cliente
   walletBalanceDOP?: number; // Saldo equivalente o local en DOP
   primaryCurrency?: 'USD' | 'DOP'; // Moneda real de la billetera del cliente
+  remittanceFeePercent?: number; // Tarifa individual descontada del monto enviado
   benefitRatePercent?: number; // Porcentaje individual acumulable sobre remesas
   benefitAccruedDOP?: number; // Beneficio pendiente de acreditar, siempre en pesos dominicanos
   phone?: string;
@@ -372,6 +373,8 @@ export interface SubAgent {
 
   // Configuración Financiera y de Beneficios
   commissionRatePercent: number; // Tasa en % de beneficios (e.g. 2.5%)
+  remittanceFeePercent?: number; // Tarifa individual descontada de cada remesa
+  primaryCurrency?: 'USD' | 'DOP'; // Moneda real de la billetera operativa
   localCurrency: 'DOP' | 'HTG' | 'USD'; // Moneda local del subagente
   walletBalance: number; // Balance operativo actual en su moneda local
   creditLimit?: number; // Límite de crédito opcional

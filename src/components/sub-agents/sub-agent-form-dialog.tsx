@@ -73,6 +73,8 @@ export function SubAgentFormDialog({
 
   // Configuración Financiera y Beneficios
   const [commissionRatePercent, setCommissionRatePercent] = useState<number>(2.5);
+  const [remittanceFeePercent, setRemittanceFeePercent] = useState<number>(8);
+  const [primaryCurrency, setPrimaryCurrency] = useState<"DOP" | "USD">("DOP");
   const [localCurrency, setLocalCurrency] = useState<"DOP" | "HTG" | "USD">("DOP");
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [creditLimit, setCreditLimit] = useState<number>(0);
@@ -103,6 +105,8 @@ export function SubAgentFormDialog({
       setStatus(subAgentToEdit.status || "active");
 
       setCommissionRatePercent(subAgentToEdit.commissionRatePercent ?? 2.5);
+      setRemittanceFeePercent(subAgentToEdit.remittanceFeePercent ?? 8);
+      setPrimaryCurrency(subAgentToEdit.primaryCurrency === "USD" ? "USD" : "DOP");
       setLocalCurrency(subAgentToEdit.localCurrency || "DOP");
       setWalletBalance(subAgentToEdit.walletBalance ?? 0);
       setCreditLimit(subAgentToEdit.creditLimit ?? 0);
@@ -133,6 +137,8 @@ export function SubAgentFormDialog({
       setStatus("active");
 
       setCommissionRatePercent(2.5);
+      setRemittanceFeePercent(8);
+      setPrimaryCurrency("DOP");
       setLocalCurrency("DOP");
       setWalletBalance(0);
       setCreditLimit(0);
@@ -155,6 +161,7 @@ export function SubAgentFormDialog({
   const handleCountryChange = (newCountry: "DO" | "HT") => {
     setCountry(newCountry);
     if (newCountry === "DO") {
+      setPrimaryCurrency("DOP");
       setLocalCurrency("DOP");
       const defaultProv = "Distrito Nacional";
       setProvince(defaultProv);
@@ -165,6 +172,7 @@ export function SubAgentFormDialog({
         setGpsLng(provData.defaultGps.lng);
       }
     } else {
+      setPrimaryCurrency("USD");
       setLocalCurrency("HTG");
       const defaultDept = "Ouest";
       setProvince(defaultDept);
@@ -226,6 +234,8 @@ export function SubAgentFormDialog({
       phone: phone || "+1 (809) 000-0000",
       status,
       commissionRatePercent: Number(commissionRatePercent) || 2.5,
+      remittanceFeePercent: Number.isFinite(Number(remittanceFeePercent)) ? Number(remittanceFeePercent) : 8,
+      primaryCurrency,
       localCurrency,
       walletBalance: Number(walletBalance) || 0,
       creditLimit: Number(creditLimit) || 0,
@@ -439,6 +449,36 @@ export function SubAgentFormDialog({
                     <span className="text-[11px] text-muted-foreground">
                       Rango habitual en red binacional: 1.50% - 4.00%
                     </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-foreground">Tarifa individual de remesa *</Label>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        required
+                        value={remittanceFeePercent}
+                        onChange={(e) => setRemittanceFeePercent(parseFloat(e.target.value) || 0)}
+                        className="h-11 text-base font-bold pr-9 font-mono text-primary"
+                      />
+                      <span className="absolute right-3 top-3 text-sm font-bold text-accent">%</span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">Se descuenta del monto enviado antes de convertirlo a gourdes.</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-foreground">Moneda principal de la billetera *</Label>
+                    <Select value={primaryCurrency} onValueChange={(val: "DOP" | "USD") => setPrimaryCurrency(val)}>
+                      <SelectTrigger className="h-11 text-sm font-semibold"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DOP">🇩🇴 DOP - Peso Dominicano (RD$)</SelectItem>
+                        <SelectItem value="USD">🇺🇸 USD - Dólar Estadounidense ($)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-[11px] text-muted-foreground">Define la moneda del saldo utilizado para enviar remesas.</span>
                   </div>
 
                   <div className="space-y-1.5">

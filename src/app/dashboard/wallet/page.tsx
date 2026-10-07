@@ -82,6 +82,7 @@ function ClientWalletContent() {
     idNumber: userProfile?.idNumber || "",
   });
   const [primaryCurrency, setPrimaryCurrency] = useState<"USD" | "DOP">(userProfile?.primaryCurrency === "DOP" ? "DOP" : "USD");
+  const [remittanceFeePercent, setRemittanceFeePercent] = useState(Number(userProfile?.remittanceFeePercent ?? settings?.haitiPublicFeePercent ?? 8));
   const [benefitRatePercent, setBenefitRatePercent] = useState(Number(userProfile?.benefitRatePercent || 0));
   const [benefitAccruedDOP, setBenefitAccruedDOP] = useState(Number(userProfile?.benefitAccruedDOP || 0));
 
@@ -94,7 +95,7 @@ function ClientWalletContent() {
   // Exchange Rates
   const rateDOP = settings?.publicRateDOP || 58.5;
   const rateHTG = settings?.publicRateHTG || 132.2;
-  const feePercent = settings?.haitiPublicFeePercent || 8.0;
+  const feePercent = remittanceFeePercent;
 
   // Load balances and data
   const refreshData = useCallback(async () => {
@@ -112,6 +113,7 @@ function ClientWalletContent() {
         if (!response.ok || !data.success) throw new Error(data.error || "No se pudo sincronizar la billetera");
         const account = data.account || {};
         setPrimaryCurrency(account.primaryCurrency === "DOP" ? "DOP" : "USD");
+        setRemittanceFeePercent(Number(account.remittanceFeePercent ?? data.rates?.remittanceFeePercent ?? settings?.haitiPublicFeePercent ?? 8));
         setBenefitRatePercent(Number(account.benefitRatePercent || 0));
         setBenefitAccruedDOP(Number(account.benefitAccruedDOP || 0));
         setBalances({ walletBalance: Number(account.walletBalance ?? account.walletBalanceUSD ?? 0), savingsBalance: Number(account.savingsBalance ?? account.savingsBalanceUSD ?? 0), clientCode: account.clientCode || "", phone: account.phone || "", idNumber: account.idNumber || "" });

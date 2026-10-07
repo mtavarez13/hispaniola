@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
         clientCode: clean(profile.clientCode, 30), role: profile.role,
         walletBalance: Number(profile.walletBalance || 0), savingsBalance: Number(profile.savingsBalance || 0),
         primaryCurrency: profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD',
+        remittanceFeePercent: Number(profile.remittanceFeePercent ?? 8),
         benefitRatePercent: Number(profile.benefitRatePercent || 0),
         benefitAccruedDOP: Number(profile.benefitAccruedDOP || 0),
       }))
@@ -43,9 +44,11 @@ export async function PATCH(req: NextRequest) {
     const clientCode = clean(body.clientCode, 30).toUpperCase();
     const role = body.role === 'agent' ? 'agent' : 'customer';
     const primaryCurrency = body.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
+    const remittanceFeePercent = Math.round(Number(body.remittanceFeePercent ?? 8) * 100) / 100;
     const benefitRatePercent = Math.round(Number(body.benefitRatePercent || 0) * 100) / 100;
     if (!uid || name.length < 2) return NextResponse.json({ success: false, error: 'Perfil inválido' }, { status: 400 });
     if (!['DO', 'HT', 'US'].includes(country)) return NextResponse.json({ success: false, error: 'País inválido' }, { status: 400 });
+    if (!Number.isFinite(remittanceFeePercent) || remittanceFeePercent < 0 || remittanceFeePercent > 100) return NextResponse.json({ success: false, error: 'La tarifa de remesa debe estar entre 0% y 100%' }, { status: 400 });
     if (!Number.isFinite(benefitRatePercent) || benefitRatePercent < 0 || benefitRatePercent > 100) return NextResponse.json({ success: false, error: 'La tasa de beneficio debe estar entre 0% y 100%' }, { status: 400 });
     const ref = adminDb.collection('users').doc(uid);
     const ratesRef = adminDb.collection('settings').doc('rates');
@@ -63,11 +66,11 @@ export async function PATCH(req: NextRequest) {
       };
       const walletBalance = convert(current.walletBalance);
       const savingsBalance = convert(current.savingsBalance);
-      transaction.set(ref, { name, phone, idNumber, country, clientCode, role, primaryCurrency, benefitRatePercent, walletBalance, savingsBalance, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      transaction.set(ref, { name, phone, idNumber, country, clientCode, role, primaryCurrency, remittanceFeePercent, benefitRatePercent, walletBalance, savingsBalance, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       return { walletBalance, savingsBalance, previousCurrency, converted: previousCurrency !== primaryCurrency };
     });
     await adminAuth.updateUser(uid, { displayName: name });
-    return NextResponse.json({ success: true, profile: { uid, name, phone, idNumber, country, clientCode, role, primaryCurrency, benefitRatePercent, ...converted } });
+    return NextResponse.json({ success: true, profile: { uid, name, phone, idNumber, country, clientCode, role, primaryCurrency, remittanceFeePercent, benefitRatePercent, ...converted } });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     if (message === 'USER_NOT_FOUND') return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 });

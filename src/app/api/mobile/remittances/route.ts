@@ -107,7 +107,9 @@ export async function POST(req: NextRequest) {
       const amountUSD = roundMoney(sourceCurrency === 'DOP' ? sourceAmount / rateDOP : sourceAmount);
       if (amountUSD < 1 || amountUSD > 5000) throw new MobileApiError(422, 'El equivalente del envío debe estar entre US$1 y US$5,000');
       const amountDOP = roundMoney(sourceCurrency === 'DOP' ? sourceAmount : amountUSD * rateDOP);
-      const feePercent = Number(settings.haitiPublicFeePercent || 8);
+      const configuredFee = profile.remittanceFeePercent ?? settings.haitiPublicFeePercent ?? 8;
+      const parsedFee = Number(configuredFee);
+      const feePercent = Number.isFinite(parsedFee) ? Math.max(0, Math.min(100, parsedFee)) : 8;
       const feeUSD = roundMoney(amountUSD * (feePercent / 100));
       const deliveredUSD = roundMoney(Math.max(0, amountUSD - feeUSD));
       const amountHTG = roundMoney(deliveredUSD * rateHTG);
