@@ -234,7 +234,7 @@ public final class MainActivity extends Activity {
         activeScreen = "Inicio";
         JSONObject account = account();
         renderShell("Hola, " + firstName(account.optString("name", "cliente")), "Tu dinero listo para cruzar fronteras");
-        balanceCard(account.optDouble("walletBalanceUSD", 0));
+        balanceCard(walletBalance(account));
         section("Acciones rápidas");
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -255,17 +255,21 @@ public final class MainActivity extends Activity {
         JSONObject account = account();
         JSONObject rates = rates();
         renderShell("Mi billetera", "Saldos actualizados desde tu cuenta segura");
-        balanceCard(account.optDouble("walletBalanceUSD", 0));
+        balanceCard(walletBalance(account));
         LinearLayout savings = card();
         savings.addView(text("BOLSILLO DE AHORRO", 12, GREEN, Typeface.BOLD));
-        savings.addView(text(money(account.optDouble("savingsBalanceUSD", 0)), 27, INK, Typeface.BOLD), params(-1, -2, 8));
+        savings.addView(text(walletMoney(walletSavings(account)), 27, INK, Typeface.BOLD), params(-1, -2, 8));
         savings.addView(text("Fondos separados de tu saldo para envíos", 13, MUTED, Typeface.NORMAL), params(-1, -2, 4));
         content.addView(savings, params(-1, -2, 12));
         Button deposit = primaryButton("+ Depositar sin comisión");
         deposit.setOnClickListener(v -> showDeposit());
         content.addView(deposit, params(-1, dp(54), 12));
-        double available = account.optDouble("walletBalanceUSD", 0);
-        info("Equivalencias", String.format(Locale.US, "RD$ %,.2f DOP   ·   %,.0f HTG", available * rates.optDouble("dopPerUsd", 58.5), available * rates.optDouble("htgPerUsd", 132.2)));
+        double available = walletBalance(account);
+        double availableUsd = "DOP".equals(walletCurrency()) ? available / rates.optDouble("dopPerUsd", 58.5) : available;
+        info("Equivalencias", String.format(Locale.US, "RD$ %,.2f DOP   ·   %,.0f HTG", "DOP".equals(walletCurrency()) ? available : availableUsd * rates.optDouble("dopPerUsd", 58.5), availableUsd * rates.optDouble("htgPerUsd", 132.2)));
+        double benefit = account.optDouble("benefitAccruedDOP", 0);
+        double benefitRate = account.optDouble("benefitRatePercent", 0);
+        if (benefitRate > 0) info("Beneficio acumulado", String.format(Locale.US, "RD$ %,.2f acumulados · Tasa %.2f%%", benefit, benefitRate));
         section("Movimientos y remesas");
         addRecent(20);
     }
@@ -357,7 +361,8 @@ public final class MainActivity extends Activity {
     private void updateDepositPreview(TextView view, String raw, String currency, double dopPerUsd) {
         double value = parseAmount(raw);
         double usdValue = "DOP".equals(currency) ? value / dopPerUsd : value;
-        view.setText("Acreditación estimada: " + money(round(usdValue)) + " · Comisión: US$0.00");
+        double walletValue = "DOP".equals(walletCurrency()) ? usdValue * dopPerUsd : usdValue;
+        view.setText("Acreditación estimada: " + walletMoney(round(walletValue)) + " · Comisión: 0%");
     }
 
     private void submitDeposit(Button button, String methodId, double amount, String reference) {
@@ -401,12 +406,14 @@ public final class MainActivity extends Activity {
         renderShell("Enviar a Haití", "Acredita directamente en NatCash o MonCash");
         JSONObject account = account();
         JSONObject rates = rates();
-        double balance = account.optDouble("walletBalanceUSD", 0);
+        double balance = walletBalance(account);
+        boolean dopWallet = "DOP".equals(walletCurrency());
+        double dopRate = rates.optDouble("dopPerUsd", 58.5);
         double rate = rates.optDouble("htgPerUsd", 132.2);
         double feePct = rates.optDouble("remittanceFeePercent", 8);
         LinearLayout miniBalance = card();
         miniBalance.addView(text("Saldo disponible", 12, MUTED, Typeface.BOLD));
-        miniBalance.addView(text(money(balance), 25, INK, Typeface.BOLD), params(-1, -2, 5));
+        miniBalance.addView(text(walletMoney(balance), 25, INK, Typeface.BOLD), params(-1, -2, 5));
         content.addView(miniBalance);
 
         section("Selecciona el destino");
@@ -425,7 +432,7 @@ public final class MainActivity extends Activity {
         section("Datos del envío");
         EditText name = input("Nombre completo del destinatario", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         EditText phone = input("Número de Haití (8 dígitos)", InputType.TYPE_CLASS_PHONE);
-        EditText amount = input("Monto total en USD", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        EditText amount = input("Monto total en " + walletCurrency(), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         content.addView(name, params(-1, dp(57), 9));
         content.addView(phone, params(-1, dp(57), 11));
         content.addView(amount, params(-1, dp(57), 11));
@@ -439,9 +446,11 @@ public final class MainActivity extends Activity {
         amount.addTextChangedListener(new SimpleWatcher() {
             @Override public void afterTextChanged(Editable editable) {
                 double value = parseAmount(editable.toString());
+                double valueUsd = dopWallet ? value / dopRate : value;
                 double fee = value * feePct / 100d;
-                quoteAmount.setText(String.format(Locale.US, "El destinatario recibe: %,.2f HTG", Math.max(0, value - fee) * rate));
-                quoteFee.setText(String.format(Locale.US, "Tarifa %.1f%%: %s · Tasa: %,.2f HTG", feePct, money(fee), rate));
+                double feeUsd = valueUsd * feePct / 100d;
+                quoteAmount.setText(String.format(Locale.US, "El destinatario recibe: %,.2f HTG", Math.max(0, valueUsd - feeUsd) * rate));
+                quoteFee.setText(String.format(Locale.US, "Tarifa %.1f%%: %s · Tasa: %,.2f HTG", feePct, walletMoney(fee), rate));
             }
         });
 
@@ -456,12 +465,13 @@ public final class MainActivity extends Activity {
             if (recipientPhone.startsWith("509")) recipientPhone = recipientPhone.substring(3);
             double value = parseAmount(amount.getText().toString());
             if (recipient.length() < 3 || recipientPhone.length() != 8 || value < 1) { errorDialog("Revisa los datos", "Completa el nombre, un teléfono haitiano de 8 dígitos y un monto válido."); return; }
-            if (value > balance) { errorDialog("Saldo insuficiente", "Disponible: " + money(balance)); return; }
+            if (value > balance) { errorDialog("Saldo insuficiente", "Disponible: " + walletMoney(balance)); return; }
             double fee = round(value * feePct / 100d);
-            double htg = round((value - fee) * rate);
+            double valueUsd = dopWallet ? value / dopRate : value;
+            double htg = round((valueUsd - (valueUsd * feePct / 100d)) * rate);
             String finalPhone = recipientPhone;
             new AlertDialog.Builder(this).setTitle("Confirmar remesa")
-                    .setMessage(selected[0] + " · +509 " + finalPhone + "\n" + recipient + "\n\nDebitar: " + money(value) + "\nRecibe: " + String.format(Locale.US, "%,.2f HTG", htg) + "\nTarifa incluida: " + money(fee))
+                    .setMessage(selected[0] + " · +509 " + finalPhone + "\n" + recipient + "\n\nDebitar: " + walletMoney(value) + "\nRecibe: " + String.format(Locale.US, "%,.2f HTG", htg) + "\nTarifa incluida: " + walletMoney(fee))
                     .setNegativeButton("Cancelar", null)
                     .setPositiveButton("Enviar ahora", (dialog, which) -> executeSend(send, selected[0], recipient, finalPhone, value)).show();
         });
@@ -472,11 +482,11 @@ public final class MainActivity extends Activity {
         button.setText("Procesando de forma segura…");
         executor.execute(() -> {
             try {
-                JSONObject payload = new JSONObject().put("operator", operator).put("recipientName", recipient).put("recipientPhone", phone).put("amountUSD", amount).put("idempotencyKey", UUID.randomUUID().toString());
+                JSONObject payload = new JSONObject().put("operator", operator).put("recipientName", recipient).put("recipientPhone", phone).put("amount", amount).put("sourceCurrency", walletCurrency()).put("idempotencyKey", UUID.randomUUID().toString());
                 JSONObject response = api.sendRemittance(payload);
                 JSONObject remittance = response.optJSONObject("remittance");
-                double updatedBalance = response.optDouble("walletBalanceUSD", Double.NaN);
-                if (!Double.isNaN(updatedBalance)) account().put("walletBalanceUSD", updatedBalance);
+                double updatedBalance = response.optDouble("walletBalance", Double.NaN);
+                if (!Double.isNaN(updatedBalance)) account().put("walletBalance", updatedBalance);
                 try { accountData = api.account(); } catch (Exception ignored) { }
                 runOnUiThread(() -> {
                     String txId = remittance == null ? "" : remittance.optString("txId");
@@ -552,6 +562,8 @@ public final class MainActivity extends Activity {
         panel.addView(text(account.optString("email", ""), 14, MUTED, Typeface.NORMAL), params(-1, -2, 5));
         panel.addView(text("Código: " + account.optString("clientCode", "Sin asignar"), 13, BLUE, Typeface.BOLD), params(-1, -2, 14));
         panel.addView(text("Teléfono: " + account.optString("phone", "No registrado"), 13, MUTED, Typeface.NORMAL), params(-1, -2, 6));
+        panel.addView(text("Moneda principal: " + walletCurrency(), 13, MUTED, Typeface.BOLD), params(-1, -2, 6));
+        if (account.optDouble("benefitRatePercent", 0) > 0) panel.addView(text(String.format(Locale.US, "Beneficio acumulado: RD$ %,.2f (%.2f%%)", account.optDouble("benefitAccruedDOP", 0), account.optDouble("benefitRatePercent", 0)), 13, AMBER, Typeface.BOLD), params(-1, -2, 6));
         content.addView(panel);
         section("Editar información");
         EditText name = input("Nombre completo", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
@@ -649,8 +661,8 @@ public final class MainActivity extends Activity {
 
     private void balanceCard(double balance) {
         LinearLayout box = column(); box.setPadding(dp(20), dp(19), dp(20), dp(19)); box.setBackground(roundGradient(BLUE, CYAN, 22));
-        LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text("SALDO DISPONIBLE", 12, Color.rgb(220, 240, 255), Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1)); top.addView(text("USD", 12, Color.WHITE, Typeface.BOLD)); box.addView(top);
-        box.addView(text(money(balance), 34, Color.WHITE, Typeface.BOLD), params(-1, -2, 8)); box.addView(text("● Sincronizado ahora  ·  Disponible para remesas", 12, Color.rgb(226, 242, 255), Typeface.NORMAL), params(-1, -2, 5)); content.addView(box);
+        LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text("SALDO DISPONIBLE", 12, Color.rgb(220, 240, 255), Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1)); top.addView(text(walletCurrency(), 12, Color.WHITE, Typeface.BOLD)); box.addView(top);
+        box.addView(text(walletMoney(balance), 34, Color.WHITE, Typeface.BOLD), params(-1, -2, 8)); box.addView(text("● Sincronizado ahora  ·  Disponible para remesas", 12, Color.rgb(226, 242, 255), Typeface.NORMAL), params(-1, -2, 5)); content.addView(box);
         box.setAlpha(0f); box.setTranslationY(dp(18)); box.animate().alpha(1f).translationY(0f).setDuration(420).start();
     }
 
@@ -666,13 +678,13 @@ public final class MainActivity extends Activity {
             LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(15), dp(14), dp(15), dp(14)); row.setBackground(round(SURFACE, 18, LINE, 1));
             TextView badge = text(tx.optString("operator", "N").startsWith("Mon") ? "M" : "N", 16, Color.WHITE, Typeface.BOLD); badge.setGravity(Gravity.CENTER); badge.setBackground(round(tx.optString("operator").startsWith("Mon") ? RED : BLUE, 13, Color.TRANSPARENT, 0)); row.addView(badge, new LinearLayout.LayoutParams(dp(42), dp(42)));
             LinearLayout labels = column(); labels.setPadding(dp(12), 0, dp(8), 0); labels.addView(text(tx.optString("recipientName", "Destinatario"), 14, INK, Typeface.BOLD)); labels.addView(text(tx.optString("operator") + " · " + tx.optString("recipientPhone"), 11, MUTED, Typeface.NORMAL), params(-1, -2, 3)); labels.addView(text(statusLabel(tx.optString("status")), 11, statusColor(tx.optString("status")), Typeface.BOLD), params(-1, -2, 4)); row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-            LinearLayout totals = column(); totals.setGravity(Gravity.RIGHT); totals.addView(text("-" + money(tx.optDouble("amountUSD", 0)), 14, INK, Typeface.BOLD)); totals.addView(text(String.format(Locale.US, "%,.0f HTG", tx.optDouble("amountHTG", 0)), 11, MUTED, Typeface.NORMAL), params(-2, -2, 3)); row.addView(totals); JSONObject selectedTx = tx; row.setOnClickListener(v -> receipt(selectedTx)); content.addView(row, params(-1, -2, i == 0 ? 0 : 9));
+            LinearLayout totals = column(); totals.setGravity(Gravity.RIGHT); totals.addView(text("-" + movementMoney(tx), 14, INK, Typeface.BOLD)); totals.addView(text(String.format(Locale.US, "%,.0f HTG", tx.optDouble("amountHTG", 0)), 11, MUTED, Typeface.NORMAL), params(-2, -2, 3)); row.addView(totals); JSONObject selectedTx = tx; row.setOnClickListener(v -> receipt(selectedTx)); content.addView(row, params(-1, -2, i == 0 ? 0 : 9));
         }
     }
 
     private void receipt(JSONObject tx) {
         String reference = tx.optString("txId"); if (reference.isEmpty()) reference = tx.optString("id");
-        new AlertDialog.Builder(this).setTitle("Detalle de remesa").setMessage(tx.optString("operator") + "\n" + tx.optString("recipientName") + " · " + tx.optString("recipientPhone") + "\n\nMonto: " + money(tx.optDouble("amountUSD", 0)) + "\nEntrega: " + String.format(Locale.US, "%,.2f HTG", tx.optDouble("amountHTG", 0)) + "\nEstado: " + statusLabel(tx.optString("status")) + "\nReferencia: " + reference).setPositiveButton("Cerrar", null).show();
+        new AlertDialog.Builder(this).setTitle("Detalle de remesa").setMessage(tx.optString("operator") + "\n" + tx.optString("recipientName") + " · " + tx.optString("recipientPhone") + "\n\nMonto: " + movementMoney(tx) + "\nEntrega: " + String.format(Locale.US, "%,.2f HTG", tx.optDouble("amountHTG", 0)) + "\nEstado: " + statusLabel(tx.optString("status")) + "\nReferencia: " + reference).setPositiveButton("Cerrar", null).show();
     }
 
     private View actionTile(String icon, String title, String detail, int color, View.OnClickListener listener) {
@@ -722,6 +734,11 @@ public final class MainActivity extends Activity {
     private double parseAmount(String value) { try { return Double.parseDouble(value.trim()); } catch (Exception ignored) { return 0; } }
     private double round(double value) { return Math.round(value * 100d) / 100d; }
     private String money(double value) { return usd.format(value); }
+    private String walletCurrency() { return "DOP".equals(account().optString("primaryCurrency")) ? "DOP" : "USD"; }
+    private double walletBalance(JSONObject account) { return account.has("walletBalance") ? account.optDouble("walletBalance", 0) : account.optDouble("walletBalanceUSD", 0); }
+    private double walletSavings(JSONObject account) { return account.has("savingsBalance") ? account.optDouble("savingsBalance", 0) : account.optDouble("savingsBalanceUSD", 0); }
+    private String walletMoney(double value) { return ("DOP".equals(walletCurrency()) ? "RD$" : "US$") + String.format(Locale.US, "%,.2f", value); }
+    private String movementMoney(JSONObject item) { String currency = item.optString("sourceCurrency", item.optString("currency", "USD")); double value = item.has("amount") ? item.optDouble("amount", 0) : item.optDouble("amountUSD", 0); return ("DOP".equals(currency) ? "RD$" : "US$") + String.format(Locale.US, "%,.2f", value) + " " + currency; }
     private String firstName(String name) { String trimmed = name.trim(); int split = trimmed.indexOf(' '); return split > 0 ? trimmed.substring(0, split) : trimmed; }
     private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); }
     private LinearLayout column() { LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); return layout; }

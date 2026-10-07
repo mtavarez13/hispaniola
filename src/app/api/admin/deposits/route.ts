@@ -29,7 +29,7 @@ export async function PATCH(req: NextRequest) {
     const reason = String(body.reason || '').trim().slice(0, 240);
     if (!id) return NextResponse.json({ success: false, error: 'Depósito requerido' }, { status: 400 });
     const depositRef = adminDb.collection('wallet_deposits').doc(id);
-    let notification: { userId: string; amountUSD: number; newBalance?: number; methodLabel: string } | null = null;
+    let notification: { userId: string; amountUSD: number; creditedAmount?: number; currency?: string; newBalance?: number; methodLabel: string } | null = null;
     const result = await adminDb.runTransaction(async (transaction) => {
       const depositSnapshot = await transaction.get(depositRef);
       if (!depositSnapshot.exists) throw new Error('DEPOSIT_NOT_FOUND');
@@ -42,21 +42,27 @@ export async function PATCH(req: NextRequest) {
       }
       const userRef = adminDb.collection('users').doc(String(deposit.userId));
       const movementRef = userRef.collection('wallet_movements').doc(id);
-      const [userSnapshot, movementSnapshot] = await Promise.all([transaction.get(userRef), transaction.get(movementRef)]);
+      const ratesRef = adminDb.collection('settings').doc('rates');
+      const [userSnapshot, movementSnapshot, ratesSnapshot] = await Promise.all([transaction.get(userRef), transaction.get(movementRef), transaction.get(ratesRef)]);
       if (!userSnapshot.exists) throw new Error('CLIENT_NOT_FOUND');
       const amountUSD = money(Number(deposit.amountCreditedUSD || 0));
       if (amountUSD <= 0) throw new Error('INVALID_AMOUNT');
-      const previousBalance = money(Number(userSnapshot.data()?.walletBalance || 0));
-      const newBalance = money(previousBalance + amountUSD);
+      const profile = userSnapshot.data() || {};
+      const primaryCurrency = profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
+      const rateDOP = Number(ratesSnapshot.data()?.publicRateDOP || 58.5);
+      const creditedAmount = primaryCurrency === 'DOP' ? money(amountUSD * rateDOP) : amountUSD;
+      const previousBalance = money(Number(profile.walletBalance || 0));
+      const newBalance = money(previousBalance + creditedAmount);
       transaction.update(userRef, { walletBalance: newBalance, walletUpdatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-      if (!movementSnapshot.exists) transaction.set(movementRef, { type: 'deposit', title: 'Depósito acreditado', description: `${deposit.methodLabel || 'Cuenta autorizada'} · Comisión 0%`, amountUSD, direction: 'in', targetPocket: 'main', previousBalance, newBalance, status: 'completed', referenceId: id, receiptCode: deposit.reference || '', createdAt: FieldValue.serverTimestamp(), createdAtIso: new Date().toISOString(), creditedBy: admin.email });
-      transaction.update(depositRef, { status: 'completed', reviewedAt: FieldValue.serverTimestamp(), reviewedBy: admin.email, creditedAt: FieldValue.serverTimestamp(), balanceAfterUSD: newBalance });
-      notification = { userId: String(deposit.userId), amountUSD, newBalance, methodLabel: String(deposit.methodLabel || 'Depósito') };
-      return { duplicate: false, status: 'completed', userId: deposit.userId, newBalanceUSD: newBalance };
+      if (!movementSnapshot.exists) transaction.set(movementRef, { type: 'deposit', title: 'Depósito acreditado', description: `${deposit.methodLabel || 'Cuenta autorizada'} · Comisión 0%`, amount: creditedAmount, currency: primaryCurrency, amountUSD, direction: 'in', targetPocket: 'main', previousBalance, newBalance, status: 'completed', referenceId: id, receiptCode: deposit.reference || '', createdAt: FieldValue.serverTimestamp(), createdAtIso: new Date().toISOString(), creditedBy: admin.email });
+      transaction.update(depositRef, { status: 'completed', reviewedAt: FieldValue.serverTimestamp(), reviewedBy: admin.email, creditedAt: FieldValue.serverTimestamp(), creditedAmount, creditedCurrency: primaryCurrency, balanceAfter: newBalance });
+      notification = { userId: String(deposit.userId), amountUSD, creditedAmount, currency: primaryCurrency, newBalance, methodLabel: String(deposit.methodLabel || 'Depósito') };
+      return { duplicate: false, status: 'completed', userId: deposit.userId, newBalance, primaryCurrency };
     });
     if (!result.duplicate && notification) {
-      const n = notification as { userId: string; amountUSD: number; newBalance?: number; methodLabel: string };
-      await createAndPushMobileNotification(n.userId, action === 'approve' ? { title: 'Depósito acreditado', body: `Recibiste +$${n.amountUSD.toFixed(2)} USD sin comisión. Saldo disponible: $${Number(n.newBalance).toFixed(2)} USD.`, type: 'deposit', amountUSD: n.amountUSD, referenceId: id } : { title: 'Depósito requiere revisión', body: `${n.methodLabel}: ${reason || 'No se pudo validar el comprobante'}.`, type: 'deposit', amountUSD: n.amountUSD, referenceId: id });
+      const n = notification as { userId: string; amountUSD: number; creditedAmount?: number; currency?: string; newBalance?: number; methodLabel: string };
+      const symbol = n.currency === 'DOP' ? 'RD$' : 'US$';
+      await createAndPushMobileNotification(n.userId, action === 'approve' ? { title: 'Depósito acreditado', body: `Recibiste +${symbol}${Number(n.creditedAmount || n.amountUSD).toFixed(2)} sin comisión. Saldo disponible: ${symbol}${Number(n.newBalance).toFixed(2)}.`, type: 'deposit', amountUSD: n.amountUSD, referenceId: id } : { title: 'Depósito requiere revisión', body: `${n.methodLabel}: ${reason || 'No se pudo validar el comprobante'}.`, type: 'deposit', amountUSD: n.amountUSD, referenceId: id });
     }
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

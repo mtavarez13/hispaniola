@@ -81,6 +81,9 @@ function ClientWalletContent() {
     phone: userProfile?.phone || "+1 (829) 450-2211",
     idNumber: userProfile?.idNumber || "",
   });
+  const [primaryCurrency, setPrimaryCurrency] = useState<"USD" | "DOP">(userProfile?.primaryCurrency === "DOP" ? "DOP" : "USD");
+  const [benefitRatePercent, setBenefitRatePercent] = useState(Number(userProfile?.benefitRatePercent || 0));
+  const [benefitAccruedDOP, setBenefitAccruedDOP] = useState(Number(userProfile?.benefitAccruedDOP || 0));
 
   // Data lists
   const [deposits, setDeposits] = useState<ClientDepositRecord[]>([]);
@@ -108,10 +111,13 @@ function ClientWalletContent() {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || "No se pudo sincronizar la billetera");
         const account = data.account || {};
-        setBalances({ walletBalance: Number(account.walletBalanceUSD || 0), savingsBalance: Number(account.savingsBalanceUSD || 0), clientCode: account.clientCode || "", phone: account.phone || "", idNumber: account.idNumber || "" });
+        setPrimaryCurrency(account.primaryCurrency === "DOP" ? "DOP" : "USD");
+        setBenefitRatePercent(Number(account.benefitRatePercent || 0));
+        setBenefitAccruedDOP(Number(account.benefitAccruedDOP || 0));
+        setBalances({ walletBalance: Number(account.walletBalance ?? account.walletBalanceUSD ?? 0), savingsBalance: Number(account.savingsBalance ?? account.savingsBalanceUSD ?? 0), clientCode: account.clientCode || "", phone: account.phone || "", idNumber: account.idNumber || "" });
         setMovements((data.movements || []).map((item: any) => ({
           id: item.id, clientId: uid, type: item.type as ClientWalletMovement["type"], title: item.title,
-          description: item.description, amountUSD: Number(item.amountUSD || 0), direction: item.direction,
+          description: item.description, amountUSD: Number(item.amountUSD || 0), amount: Number(item.amount ?? item.amountUSD ?? 0), currency: item.currency === "DOP" ? "DOP" : "USD", direction: item.direction,
           targetPocket: "main", date: item.createdAt || new Date().toISOString(), referenceId: item.referenceId,
           recipient: item.recipientName, status: item.status === "completed" ? "completed" : item.status === "failed" ? "failed" : "pending", receiptCode: item.receiptCode,
         })));
@@ -178,9 +184,15 @@ function ClientWalletContent() {
     }
   }, [sendPhone]);
 
-  const sendFeeUSD = Math.round(sendAmountUSD * (feePercent / 100) * 100) / 100;
+  const sendAmountInUSD = primaryCurrency === "DOP" ? sendAmountUSD / rateDOP : sendAmountUSD;
+  const sendFeeUSD = Math.round(sendAmountInUSD * (feePercent / 100) * 100) / 100;
+  const sendFeeSource = primaryCurrency === "DOP" ? Math.round(sendFeeUSD * rateDOP * 100) / 100 : sendFeeUSD;
   const totalSendUSD = sendAmountUSD;
-  const receiveHTG = Math.round((sendAmountUSD - sendFeeUSD) * rateHTG);
+  const receiveHTG = Math.round((sendAmountInUSD - sendFeeUSD) * rateHTG);
+  const walletSymbol = primaryCurrency === "DOP" ? "RD$" : "US$";
+  const formatWallet = (value: number) => `${walletSymbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${primaryCurrency}`;
+  const walletBalanceUSD = primaryCurrency === "DOP" ? balances.walletBalance / rateDOP : balances.walletBalance;
+  const savingsBalanceUSD = primaryCurrency === "DOP" ? balances.savingsBalance / rateDOP : balances.savingsBalance;
 
   const handleSendRemittance = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,7 +208,7 @@ function ClientWalletContent() {
       toast({
         variant: "destructive",
         title: "Monto inválido",
-        description: "Ingresa un monto en dólares mayor a 0.",
+        description: `Ingresa un monto en ${primaryCurrency} mayor a 0.`,
       });
       return;
     }
@@ -204,7 +216,7 @@ function ClientWalletContent() {
       toast({
         variant: "destructive",
         title: "Saldo insuficiente",
-        description: `Necesitas $${totalSendUSD.toFixed(2)} USD pero dispones de $${balances.walletBalance.toFixed(2)} USD en tu billetera. Por favor deposita en un Sub-Agente o transfiere de tu ahorro.`,
+        description: `Necesitas ${formatWallet(totalSendUSD)} pero dispones de ${formatWallet(balances.walletBalance)} en tu billetera.`,
       });
       return;
     }
@@ -215,13 +227,13 @@ function ClientWalletContent() {
       const response = await fetch("/api/mobile/remittances", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
-        body: JSON.stringify({ operator: sendOperator, recipientPhone: sendPhone, recipientName: sendRecipientName.trim(), amountUSD: sendAmountUSD, idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ operator: sendOperator, recipientPhone: sendPhone, recipientName: sendRecipientName.trim(), amount: sendAmountUSD, sourceCurrency: primaryCurrency, idempotencyKey: crypto.randomUUID() }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "No se pudo completar la remesa");
       const tx = result.remittance || {};
-      const movement: ClientWalletMovement = { id: tx.id, clientId: uid, type: sendOperator === "MonCash" ? "remittance_moncash" : "remittance_natcash", title: `Remesa ${sendOperator}`, description: `Enviado a ${sendRecipientName.trim()}`, amountUSD: sendAmountUSD, direction: "out", targetPocket: "main", date: new Date().toISOString(), referenceId: tx.txId || tx.id, recipient: sendRecipientName.trim(), status: tx.status === "completed" ? "completed" : "pending", receiptCode: tx.txId || tx.id };
-      const receiptTx: HaitiDepositTransaction = { id: tx.id, requestId: tx.requestId || tx.id, txId: tx.txId || tx.id, operator: sendOperator, toAccountNumber: sendPhone, recipientName: sendRecipientName.trim(), amountUSD: sendAmountUSD, amountHTG: Number(tx.amountHTG || receiveHTG), feeHTG: sendFeeUSD * rateHTG, totalAmountHTG: Number(tx.amountHTG || receiveHTG), content: `Remesa a ${sendRecipientName.trim()}`, status: tx.status === "completed" ? "confirmed" : "pending", senderName: userProfile?.name || "Cliente", timestamp: Date.now(), createdAt: new Date().toISOString(), feePercent, feeUSD: sendFeeUSD };
+      const movement: ClientWalletMovement = { id: tx.id, clientId: uid, type: sendOperator === "MonCash" ? "remittance_moncash" : "remittance_natcash", title: `Remesa ${sendOperator}`, description: `Enviado a ${sendRecipientName.trim()}`, amountUSD: sendAmountInUSD, direction: "out", targetPocket: "main", date: new Date().toISOString(), referenceId: tx.txId || tx.id, recipient: sendRecipientName.trim(), status: tx.status === "completed" ? "completed" : "pending", receiptCode: tx.txId || tx.id };
+      const receiptTx: HaitiDepositTransaction = { id: tx.id, requestId: tx.requestId || tx.id, txId: tx.txId || tx.id, operator: sendOperator, toAccountNumber: sendPhone, recipientName: sendRecipientName.trim(), amountUSD: sendAmountInUSD, amountHTG: Number(tx.amountHTG || receiveHTG), feeHTG: sendFeeUSD * rateHTG, totalAmountHTG: Number(tx.amountHTG || receiveHTG), content: `Remesa a ${sendRecipientName.trim()}`, status: tx.status === "completed" ? "confirmed" : "pending", senderName: userProfile?.name || "Cliente", timestamp: Date.now(), createdAt: new Date().toISOString(), feePercent, feeUSD: sendFeeUSD };
       toast({ title: "¡Remesa enviada!", description: "El saldo fue debitado y sincronizado en todos tus dispositivos." });
       setRecentSentTx(receiptTx);
       setSelectedReceiptMovement(movement);
@@ -434,12 +446,12 @@ function ClientWalletContent() {
           <CardContent className="pt-2 pb-4 space-y-3">
             <div>
               <div className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                ${balances.walletBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-blue-300">USD</span>
+                {walletSymbol}{balances.walletBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-blue-300">{primaryCurrency}</span>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[11px] text-blue-200/90 font-medium">
-                <span>≈ RD$ {(balances.walletBalance * rateDOP).toLocaleString("en-US", { maximumFractionDigits: 2 })} DOP</span>
+                <span>≈ RD$ {(primaryCurrency === "DOP" ? balances.walletBalance : balances.walletBalance * rateDOP).toLocaleString("en-US", { maximumFractionDigits: 2 })} DOP</span>
                 <span>•</span>
-                <span>≈ {(balances.walletBalance * rateHTG).toLocaleString("en-US", { maximumFractionDigits: 0 })} HTG (MonCash/Natcash)</span>
+                <span>≈ {(walletBalanceUSD * rateHTG).toLocaleString("en-US", { maximumFractionDigits: 0 })} HTG (MonCash/Natcash)</span>
               </div>
             </div>
 
@@ -487,10 +499,10 @@ function ClientWalletContent() {
           <CardContent className="pt-2 pb-4 space-y-3">
             <div>
               <div className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                ${balances.savingsBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-emerald-300">USD</span>
+                {walletSymbol}{balances.savingsBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-emerald-300">{primaryCurrency}</span>
               </div>
               <div className="mt-1 text-[11px] text-emerald-200/90 font-medium">
-                ≈ RD$ {(balances.savingsBalance * rateDOP).toLocaleString("en-US", { maximumFractionDigits: 2 })} DOP protegidos
+                ≈ RD$ {(primaryCurrency === "DOP" ? balances.savingsBalance : savingsBalanceUSD * rateDOP).toLocaleString("en-US", { maximumFractionDigits: 2 })} DOP protegidos
               </div>
             </div>
 
@@ -520,6 +532,18 @@ function ClientWalletContent() {
             </div>
           </CardContent>
         </Card>
+
+        {benefitRatePercent > 0 && (
+          <Card className="lg:col-span-9 border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 shadow-sm">
+            <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-amber-800">Beneficio acumulado</p>
+                <p className="text-sm text-amber-950">Recibes {benefitRatePercent.toFixed(2)}% por tus remesas completadas.</p>
+              </div>
+              <div className="text-2xl font-black text-amber-900">RD$ {benefitAccruedDOP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Client ID Carnet (Para presentar en Sub-Agentes) */}
         <Card className="lg:col-span-3 border border-amber-200/80 shadow-md bg-gradient-to-br from-amber-50/90 via-white to-amber-50/50 relative">
@@ -610,7 +634,7 @@ function ClientWalletContent() {
                     </div>
                   </div>
                   <Badge className="bg-emerald-100 text-emerald-800 text-[11px] font-bold">
-                    Saldo: ${balances.walletBalance.toFixed(2)} USD
+                    Saldo: {formatWallet(balances.walletBalance)}
                   </Badge>
                 </div>
               </CardHeader>
@@ -699,9 +723,9 @@ function ClientWalletContent() {
                   {/* Amount to send */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <Label htmlFor="sendAmount" className="text-xs font-bold">Monto a Enviar (USD)</Label>
+                      <Label htmlFor="sendAmount" className="text-xs font-bold">Monto a Enviar ({primaryCurrency})</Label>
                       <span className="text-[11px] text-muted-foreground">
-                        Disponible: <strong>${balances.walletBalance.toFixed(2)} USD</strong>
+                        Disponible: <strong>{formatWallet(balances.walletBalance)}</strong>
                       </span>
                     </div>
                     <div className="relative">
@@ -720,7 +744,7 @@ function ClientWalletContent() {
 
                     {/* Quick amount pills */}
                     <div className="flex flex-wrap gap-1.5 pt-1">
-                      {[15, 25, 50, 75, 100].map((amt) => (
+                      {(primaryCurrency === "DOP" ? [500, 1000, 2500, 5000, 10000] : [15, 25, 50, 75, 100]).map((amt) => (
                         <button
                           key={amt}
                           type="button"
@@ -734,7 +758,7 @@ function ClientWalletContent() {
                               : "bg-secondary/60 hover:bg-secondary text-slate-700 border-border"
                           }`}
                         >
-                          ${amt} USD
+                          {walletSymbol}{amt.toLocaleString()} {primaryCurrency}
                         </button>
                       ))}
                     </div>
@@ -744,7 +768,7 @@ function ClientWalletContent() {
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
                     <div className="flex justify-between text-slate-600">
                       <span>Monto base enviado:</span>
-                      <span className="font-bold text-slate-900">${sendAmountUSD.toFixed(2)} USD</span>
+                      <span className="font-bold text-slate-900">{formatWallet(sendAmountUSD)}</span>
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>Tasa de cambio del día:</span>
@@ -756,11 +780,11 @@ function ClientWalletContent() {
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>Tarifa del servicio ({feePercent}%):</span>
-                      <span className="font-bold text-slate-900">${sendFeeUSD.toFixed(2)} USD</span>
+                      <span className="font-bold text-slate-900">{formatWallet(sendFeeSource)}</span>
                     </div>
                     <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-900 font-black text-sm">
                       <span>Total debitado de Billetera:</span>
-                      <span className="text-primary">${totalSendUSD.toFixed(2)} USD</span>
+                      <span className="text-primary">{formatWallet(totalSendUSD)}</span>
                     </div>
                   </div>
 
@@ -776,7 +800,7 @@ function ClientWalletContent() {
                     )}
                     {balances.walletBalance < totalSendUSD
                       ? "Saldo Insuficiente en Billetera"
-                      : `Confirmar Envío (${sendOperator}) • $${totalSendUSD.toFixed(2)} USD`}
+                      : `Confirmar Envío (${sendOperator}) • ${formatWallet(totalSendUSD)}`}
                   </Button>
                 </form>
               </CardContent>
@@ -830,7 +854,7 @@ function ClientWalletContent() {
                   <Badge variant="outline" className="border-blue-300 text-blue-800 text-[10px]">Ahorro Disponible</Badge>
                 </div>
                 <p className="text-[11px] text-blue-800/90 leading-relaxed">
-                  Tienes <strong>${balances.savingsBalance.toFixed(2)} USD</strong> en tu Bolsillo de Ahorro. Si los necesitas para un envío, puedes transferirlos a tu saldo disponible en 1 clic.
+                  Tienes <strong>{formatWallet(balances.savingsBalance)}</strong> en tu Bolsillo de Ahorro. Si los necesitas para un envío, puedes transferirlos a tu saldo disponible en 1 clic.
                 </p>
                 <Button 
                   size="sm" 
@@ -1233,7 +1257,7 @@ function ClientWalletContent() {
 
                             <TableCell className="font-mono font-black">
                               <span className={isIncome ? "text-emerald-600" : isOut ? "text-red-600" : "text-blue-600"}>
-                                {isIncome ? "+" : isOut ? "-" : ""}${mov.amountUSD.toFixed(2)} USD
+                                {isIncome ? "+" : isOut ? "-" : ""}{mov.currency === "DOP" ? "RD$" : "US$"}{Number(mov.amount ?? mov.amountUSD).toFixed(2)} {mov.currency || "USD"}
                               </span>
                             </TableCell>
 
@@ -1452,10 +1476,10 @@ function ClientWalletContent() {
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label className="text-xs font-bold">Monto a Traspasar (USD)</Label>
+                <Label className="text-xs font-bold">Monto a Traspasar ({primaryCurrency})</Label>
                 <span className="text-[11px] text-muted-foreground">
                   Disponible origen: <strong>
-                    ${transferDirection === "to_savings" ? balances.walletBalance.toFixed(2) : balances.savingsBalance.toFixed(2)} USD
+                    {formatWallet(transferDirection === "to_savings" ? balances.walletBalance : balances.savingsBalance)}
                   </strong>
                 </span>
               </div>
@@ -1480,7 +1504,7 @@ function ClientWalletContent() {
               </div>
               <div className="flex justify-between border-t border-slate-200 pt-1 text-xs font-bold">
                 <span>Comisión por traspaso:</span>
-                <span className="text-emerald-600">Gratis ($0.00 USD)</span>
+                <span className="text-emerald-600">Gratis ({formatWallet(0)})</span>
               </div>
             </div>
           </div>
@@ -1541,7 +1565,7 @@ function ClientWalletContent() {
                   </div>
                   <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold">
                     <span>Monto Total:</span>
-                    <span className="text-primary">${selectedReceiptMovement.amountUSD.toFixed(2)} USD</span>
+                    <span className="text-primary">{selectedReceiptMovement.currency === "DOP" ? "RD$" : "US$"}{Number(selectedReceiptMovement.amount ?? selectedReceiptMovement.amountUSD).toFixed(2)} {selectedReceiptMovement.currency || "USD"}</span>
                   </div>
                 </div>
               </div>

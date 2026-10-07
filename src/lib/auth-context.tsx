@@ -162,6 +162,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       country: extraData?.country || (cleanEmail.endsWith(".ht") ? "HT" : "DO"),
       walletBalance: 0.00,
       savingsBalance: 0.00,
+      primaryCurrency: 'USD',
+      benefitRatePercent: 0,
+      benefitAccruedDOP: 0,
       phone: extraData?.phone || "+1 (829) 450-2211",
       idNumber: extraData?.idNumber || "",
       clientCode: generatedCode,
@@ -192,6 +195,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!data.clientCode) data.clientCode = generatedCode;
         if (data.walletBalance === undefined) data.walletBalance = 0.00;
         if (data.savingsBalance === undefined) data.savingsBalance = 0.00;
+        if (!data.primaryCurrency) data.primaryCurrency = 'USD';
+        if (data.benefitRatePercent === undefined) data.benefitRatePercent = 0;
+        if (data.benefitAccruedDOP === undefined) data.benefitAccruedDOP = 0;
         setUserProfile(data);
         try {
           localStorage.setItem(cachedKey, JSON.stringify(data));
@@ -210,6 +216,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           country: extraData?.country || (cleanEmail.endsWith(".ht") ? "HT" : "DO"),
           walletBalance: 0.00,
           savingsBalance: 0.00,
+          primaryCurrency: 'USD',
+          benefitRatePercent: 0,
+          benefitAccruedDOP: 0,
           phone: extraData?.phone || "+1 (829) 450-2211",
           idNumber: extraData?.idNumber || "",
           clientCode: generatedCode,

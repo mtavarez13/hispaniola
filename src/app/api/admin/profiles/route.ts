@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
         idNumber: clean(profile.idNumber, 40), country: clean(profile.country || 'DO', 2),
         clientCode: clean(profile.clientCode, 30), role: profile.role,
         walletBalance: Number(profile.walletBalance || 0), savingsBalance: Number(profile.savingsBalance || 0),
+        primaryCurrency: profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD',
+        benefitRatePercent: Number(profile.benefitRatePercent || 0),
+        benefitAccruedDOP: Number(profile.benefitAccruedDOP || 0),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
     return NextResponse.json({ success: true, profiles });
@@ -39,18 +42,36 @@ export async function PATCH(req: NextRequest) {
     const country = clean(body.country, 2).toUpperCase();
     const clientCode = clean(body.clientCode, 30).toUpperCase();
     const role = body.role === 'agent' ? 'agent' : 'customer';
+    const primaryCurrency = body.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
+    const benefitRatePercent = Math.round(Number(body.benefitRatePercent || 0) * 100) / 100;
     if (!uid || name.length < 2) return NextResponse.json({ success: false, error: 'Perfil inválido' }, { status: 400 });
     if (!['DO', 'HT', 'US'].includes(country)) return NextResponse.json({ success: false, error: 'País inválido' }, { status: 400 });
+    if (!Number.isFinite(benefitRatePercent) || benefitRatePercent < 0 || benefitRatePercent > 100) return NextResponse.json({ success: false, error: 'La tasa de beneficio debe estar entre 0% y 100%' }, { status: 400 });
     const ref = adminDb.collection('users').doc(uid);
-    const snapshot = await ref.get();
-    if (!snapshot.exists) return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 });
-    if (snapshot.data()?.role === 'admin') return NextResponse.json({ success: false, error: 'Los administradores se gestionan en su módulo exclusivo' }, { status: 403 });
-    await Promise.all([
-      ref.set({ name, phone, idNumber, country, clientCode, role, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
-      adminAuth.updateUser(uid, { displayName: name }),
-    ]);
-    return NextResponse.json({ success: true, profile: { uid, name, phone, idNumber, country, clientCode, role } });
+    const ratesRef = adminDb.collection('settings').doc('rates');
+    const converted = await adminDb.runTransaction(async (transaction) => {
+      const [snapshot, ratesSnapshot] = await Promise.all([transaction.get(ref), transaction.get(ratesRef)]);
+      if (!snapshot.exists) throw new Error('USER_NOT_FOUND');
+      const current = snapshot.data() || {};
+      if (current.role === 'admin') throw new Error('ADMIN_PROFILE');
+      const previousCurrency = current.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
+      const rateDOP = Number(ratesSnapshot.data()?.publicRateDOP || 58.5);
+      const convert = (value: unknown) => {
+        const amount = Number(value || 0);
+        if (previousCurrency === primaryCurrency) return Math.round(amount * 100) / 100;
+        return Math.round((primaryCurrency === 'DOP' ? amount * rateDOP : amount / rateDOP) * 100) / 100;
+      };
+      const walletBalance = convert(current.walletBalance);
+      const savingsBalance = convert(current.savingsBalance);
+      transaction.set(ref, { name, phone, idNumber, country, clientCode, role, primaryCurrency, benefitRatePercent, walletBalance, savingsBalance, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return { walletBalance, savingsBalance, previousCurrency, converted: previousCurrency !== primaryCurrency };
+    });
+    await adminAuth.updateUser(uid, { displayName: name });
+    return NextResponse.json({ success: true, profile: { uid, name, phone, idNumber, country, clientCode, role, primaryCurrency, benefitRatePercent, ...converted } });
   } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'USER_NOT_FOUND') return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 });
+    if (message === 'ADMIN_PROFILE') return NextResponse.json({ success: false, error: 'Los administradores se gestionan en su módulo exclusivo' }, { status: 403 });
     const authError = adminAuthError(error);
     return NextResponse.json({ success: false, error: authError.message }, { status: authError.status });
   }

@@ -9,9 +9,12 @@ export interface UserProfile {
   canAccessSettings?: boolean;
   canManageAdmins?: boolean;
   country: string;
-  walletBalance: number; // Saldo disponible para envíos (USD)
-  savingsBalance?: number; // Billetera con ahorro / Bolsillo protegido (USD)
+  walletBalance: number; // Saldo disponible en la moneda principal del cliente
+  savingsBalance?: number; // Bolsillo protegido en la moneda principal del cliente
   walletBalanceDOP?: number; // Saldo equivalente o local en DOP
+  primaryCurrency?: 'USD' | 'DOP'; // Moneda real de la billetera del cliente
+  benefitRatePercent?: number; // Porcentaje individual acumulable sobre remesas
+  benefitAccruedDOP?: number; // Beneficio pendiente de acreditar, siempre en pesos dominicanos
   phone?: string;
   idNumber?: string; // Cédula o Pasaporte
   clientCode?: string; // Código único de cliente para depósitos en sub-agentes (e.g. CLI-8942)
@@ -44,10 +47,12 @@ export interface ClientDepositRecord {
 export interface ClientWalletMovement {
   id: string; // e.g. "MOV-1029"
   clientId: string;
-  type: 'deposit_sub_agent' | 'deposit_bank' | 'admin_credit' | 'transfer_to_savings' | 'withdraw_from_savings' | 'remittance_moncash' | 'remittance_natcash';
+  type: 'deposit_sub_agent' | 'deposit_bank' | 'admin_credit' | 'benefit_credit' | 'transfer_to_savings' | 'withdraw_from_savings' | 'remittance_moncash' | 'remittance_natcash';
   title: string;
   description: string;
   amountUSD: number;
+  amount?: number;
+  currency?: 'USD' | 'DOP';
   direction: 'in' | 'out' | 'transfer';
   targetPocket: 'main' | 'savings';
   date: string;

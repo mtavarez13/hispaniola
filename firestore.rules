@@ -1,8 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if signedIn();
+      allow create: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAdmin() || (
+        signedIn() && request.auth.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 'adminLevel', 'canAccessSettings', 'canManageAdmins',
+          'primaryCurrency', 'benefitRatePercent', 'benefitAccruedDOP'
+        ])
+      );
+      allow delete: if isAdmin();
     }
     match /settings/{settingId} {
       allow read, write: if true;

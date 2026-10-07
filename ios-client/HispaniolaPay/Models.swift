@@ -19,6 +19,11 @@ struct Account: Decodable {
     var country: String
     let walletBalanceUSD: Double
     let savingsBalanceUSD: Double
+    let primaryCurrency: String?
+    let walletBalance: Double?
+    let savingsBalance: Double?
+    let benefitRatePercent: Double?
+    let benefitAccruedDOP: Double?
 }
 
 struct Rates: Decodable {
@@ -34,6 +39,9 @@ struct WalletMovement: Decodable, Identifiable {
     let description: String
     let direction: String
     let amountUSD: Double
+    let amount: Double?
+    let currency: String?
+    let amountDOP: Double?
     let status: String
     let referenceId: String?
     let receiptCode: String?

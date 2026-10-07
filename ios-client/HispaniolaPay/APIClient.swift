@@ -40,7 +40,7 @@ actor APIClient {
     }
 
     func send(token: String, operatorName: String, recipientName: String, phone: String, amount: Double) async throws {
-        let body: [String: Any] = ["operator": operatorName, "recipientName": recipientName, "recipientPhone": phone, "amountUSD": amount, "idempotencyKey": UUID().uuidString]
+        let body: [String: Any] = ["operator": operatorName, "recipientName": recipientName, "recipientPhone": phone, "amount": amount, "idempotencyKey": UUID().uuidString]
         let _: APIMessage = try await request(path: "/api/mobile/remittances", method: "POST", body: body, token: token)
     }
 

@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     const settings = settingsSnapshot.data() || {};
+    const primaryCurrency = profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
     const remittances = remittancesSnapshot.docs
       .map((doc) => {
         const data = doc.data();
@@ -38,6 +39,9 @@ export async function GET(req: NextRequest) {
           recipientName: data.recipientName,
           recipientPhone: data.recipientPhone,
           amountUSD: asNumber(data.amountUSD),
+          amount: asNumber(data.amount, data.amountUSD),
+          currency: String(data.sourceCurrency || data.currency || 'USD'),
+          amountDOP: asNumber(data.amountDOP),
           amountHTG: asNumber(data.amountHTG),
           feeUSD: asNumber(data.feeUSD),
           status: data.status || 'pending',
@@ -62,6 +66,9 @@ export async function GET(req: NextRequest) {
         description: String(data.description || (data.recipientName ? `Enviado a ${data.recipientName}` : 'Movimiento procesado')),
         direction: data.direction === 'in' ? 'in' : data.direction === 'transfer' ? 'transfer' : 'out',
         amountUSD: asNumber(data.amountUSD),
+        amount: asNumber(data.amount, data.amountUSD),
+        currency: String(data.currency || primaryCurrency),
+        amountDOP: asNumber(data.amountDOP),
         balanceAfterUSD: data.balanceAfterUSD == null ? (data.newBalance == null ? null : asNumber(data.newBalance)) : asNumber(data.balanceAfterUSD),
         operator,
         recipientName: String(data.recipientName || ''),
@@ -94,8 +101,13 @@ export async function GET(req: NextRequest) {
         phone: String(profile.phone || ''),
         idNumber: String(profile.idNumber || ''),
         country: String(profile.country || 'DO'),
-        walletBalanceUSD: asNumber(profile.walletBalance),
-        savingsBalanceUSD: asNumber(profile.savingsBalance),
+        primaryCurrency,
+        walletBalance: asNumber(profile.walletBalance),
+        savingsBalance: asNumber(profile.savingsBalance),
+        walletBalanceUSD: primaryCurrency === 'DOP' ? asNumber(profile.walletBalance) / asNumber(settings.publicRateDOP, 58.5) : asNumber(profile.walletBalance),
+        savingsBalanceUSD: primaryCurrency === 'DOP' ? asNumber(profile.savingsBalance) / asNumber(settings.publicRateDOP, 58.5) : asNumber(profile.savingsBalance),
+        benefitRatePercent: asNumber(profile.benefitRatePercent),
+        benefitAccruedDOP: asNumber(profile.benefitAccruedDOP),
       },
       rates: {
         htgPerUsd: asNumber(settings.publicRateHTG, 132.2),

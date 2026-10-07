@@ -25,10 +25,16 @@ type Reservation =
       duplicate: false;
       balance: number;
       newBalance: number;
+      sourceAmount: number;
+      sourceCurrency: 'USD' | 'DOP';
+      amountDOP: number;
       rateHTG: number;
+      rateDOP: number;
       feeUSD: number;
       deliveredUSD: number;
       amountHTG: number;
+      benefitRatePercent: number;
+      benefitEarnedDOP: number;
     };
 
 export async function POST(req: NextRequest) {
@@ -51,7 +57,8 @@ export async function POST(req: NextRequest) {
     String(body.operator || '').toLowerCase() === 'natcash' ? 'NatCash' : '';
   const recipientPhone = formatHaitiPhoneNumber(String(body.recipientPhone || ''));
   const recipientName = String(body.recipientName || '').trim().slice(0, 100);
-  const amountUSD = roundMoney(Number(body.amountUSD));
+  const requestedAmount = roundMoney(Number(body.amount ?? body.amountUSD));
+  const legacyAmountInUSD = body.amount == null;
   const idempotencyKey = String(body.idempotencyKey || '').trim();
 
   if (!operator) return NextResponse.json({ success: false, error: 'Seleccione NatCash o MonCash' }, { status: 400 });
@@ -61,8 +68,8 @@ export async function POST(req: NextRequest) {
   if (recipientName.length < 3) {
     return NextResponse.json({ success: false, error: 'Escriba el nombre completo del destinatario' }, { status: 422 });
   }
-  if (!Number.isFinite(amountUSD) || amountUSD < 1 || amountUSD > 5000) {
-    return NextResponse.json({ success: false, error: 'El monto debe estar entre US$1 y US$5,000' }, { status: 422 });
+  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0 || requestedAmount > 500000) {
+    return NextResponse.json({ success: false, error: 'El monto indicado no es válido' }, { status: 422 });
   }
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(idempotencyKey)) {
     return NextResponse.json({ success: false, error: 'Identificador de operación inválido' }, { status: 400 });
@@ -92,18 +99,26 @@ export async function POST(req: NextRequest) {
 
       const profile = profileSnapshot.data() || {};
       const settings = settingsSnapshot.data() || {};
+      const sourceCurrency: 'USD' | 'DOP' = profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
       const balance = roundMoney(Number(profile.walletBalance || 0));
       const rateHTG = Number(settings.publicRateHTG || 132.2);
+      const rateDOP = Number(settings.publicRateDOP || 58.5);
+      const sourceAmount = legacyAmountInUSD && sourceCurrency === 'DOP' ? roundMoney(requestedAmount * rateDOP) : requestedAmount;
+      const amountUSD = roundMoney(sourceCurrency === 'DOP' ? sourceAmount / rateDOP : sourceAmount);
+      if (amountUSD < 1 || amountUSD > 5000) throw new MobileApiError(422, 'El equivalente del envío debe estar entre US$1 y US$5,000');
+      const amountDOP = roundMoney(sourceCurrency === 'DOP' ? sourceAmount : amountUSD * rateDOP);
       const feePercent = Number(settings.haitiPublicFeePercent || 8);
       const feeUSD = roundMoney(amountUSD * (feePercent / 100));
       const deliveredUSD = roundMoney(Math.max(0, amountUSD - feeUSD));
       const amountHTG = roundMoney(deliveredUSD * rateHTG);
+      const benefitRatePercent = Math.max(0, Math.min(100, Number(profile.benefitRatePercent || 0)));
+      const benefitEarnedDOP = roundMoney(amountDOP * benefitRatePercent / 100);
 
-      if (balance < amountUSD) {
-        throw new MobileApiError(409, `Saldo insuficiente. Disponible: US$${balance.toFixed(2)}`);
+      if (balance < sourceAmount) {
+        throw new MobileApiError(409, `Saldo insuficiente. Disponible: ${sourceCurrency === 'DOP' ? 'RD$' : 'US$'}${balance.toFixed(2)}`);
       }
 
-      const newBalance = roundMoney(balance - amountUSD);
+      const newBalance = roundMoney(balance - sourceAmount);
       transaction.update(profileRef, {
         walletBalance: newBalance,
         walletUpdatedAt: FieldValue.serverTimestamp(),
@@ -115,19 +130,25 @@ export async function POST(req: NextRequest) {
         operator,
         recipientPhone,
         recipientName,
+        amount: sourceAmount,
+        sourceCurrency,
         amountUSD,
+        amountDOP,
         feeUSD,
         feePercent,
         deliveredUSD,
         amountHTG,
         rateHTG,
+        rateDOP,
+        benefitRatePercent,
+        benefitEarnedDOP,
         status: 'processing',
         idempotencyKey,
         createdAt: FieldValue.serverTimestamp(),
         createdAtIso: new Date().toISOString(),
       });
 
-      return { duplicate: false, balance, newBalance, rateHTG, feeUSD, deliveredUSD, amountHTG };
+      return { duplicate: false, balance, newBalance, sourceAmount, sourceCurrency, amountDOP, rateHTG, rateDOP, feeUSD, deliveredUSD, amountHTG, benefitRatePercent, benefitEarnedDOP };
     });
 
     if (reservation.duplicate) {
@@ -197,7 +218,7 @@ export async function POST(req: NextRequest) {
         const current = Number(profileSnapshot.data()?.walletBalance || 0);
         if (remittanceSnapshot.data()?.status === 'processing') {
           transaction.update(profileRef, {
-            walletBalance: roundMoney(current + amountUSD),
+            walletBalance: roundMoney(current + reservation.sourceAmount),
             walletUpdatedAt: FieldValue.serverTimestamp(),
           });
           transaction.update(remittanceRef, {
@@ -226,12 +247,19 @@ export async function POST(req: NextRequest) {
         completedAt: completed ? FieldValue.serverTimestamp() : null,
         updatedAt: FieldValue.serverTimestamp(),
       });
+      if (reservation.benefitEarnedDOP > 0) {
+        transaction.update(profileRef, { benefitAccruedDOP: FieldValue.increment(reservation.benefitEarnedDOP), updatedAt: FieldValue.serverTimestamp() });
+      }
       const movementRef = profileRef.collection('wallet_movements').doc(remittanceId);
       transaction.set(movementRef, {
         type: operator === 'MonCash' ? 'remittance_moncash' : 'remittance_natcash',
         direction: 'out',
-        amountUSD,
+        amount: reservation.sourceAmount,
+        currency: reservation.sourceCurrency,
+        amountUSD: roundMoney(reservation.sourceCurrency === 'DOP' ? reservation.sourceAmount / reservation.rateDOP : reservation.sourceAmount),
+        amountDOP: reservation.amountDOP,
         balanceAfterUSD: reservation.newBalance,
+        balanceAfter: reservation.newBalance,
         operator,
         recipientName,
         recipientPhone,
@@ -250,14 +278,21 @@ export async function POST(req: NextRequest) {
         operator,
         recipientName,
         recipientPhone,
-        amountUSD,
+        amount: reservation.sourceAmount,
+        sourceCurrency: reservation.sourceCurrency,
+        amountUSD: roundMoney(reservation.sourceCurrency === 'DOP' ? reservation.sourceAmount / reservation.rateDOP : reservation.sourceAmount),
+        amountDOP: reservation.amountDOP,
         feeUSD: reservation.feeUSD,
         amountHTG: reservation.amountHTG,
+        benefitRatePercent: reservation.benefitRatePercent,
+        benefitEarnedDOP: reservation.benefitEarnedDOP,
         txId,
         requestId,
         message: providerMessage,
       },
       walletBalanceUSD: reservation.newBalance,
+      walletBalance: reservation.newBalance,
+      primaryCurrency: reservation.sourceCurrency,
     });
   } catch (error) {
     if (error instanceof MobileApiError) {
