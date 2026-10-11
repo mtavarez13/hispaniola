@@ -1169,7 +1169,7 @@ print_r($data);
                     <Label className="text-xs font-bold">Nombre Comercial</Label>
                     <Input
                       required
-                      placeholder="Ej: Caribe Express API"
+                      placeholder="Ej: Proveedor de pagos"
                       value={formData.name}
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       className="h-8 text-xs"

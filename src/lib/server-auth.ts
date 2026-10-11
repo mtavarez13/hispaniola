@@ -17,6 +17,7 @@ export interface AdminIdentity {
   isPrimary: boolean;
   canAccessSettings: boolean;
   canManageAdmins: boolean;
+  isOperationsAdmin: boolean;
 }
 
 export interface AuthenticatedIdentity {
@@ -84,7 +85,7 @@ export function authenticatedUserError(error: unknown) {
 
 export async function requireAdmin(
   req: NextRequest,
-  options: { requireSettings?: boolean; requireManageAdmins?: boolean } = {}
+  options: { requireSettings?: boolean; requireManageAdmins?: boolean; allowOperations?: boolean } = {}
 ): Promise<AdminIdentity> {
   const authorization = req.headers.get('authorization') || '';
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
@@ -100,10 +101,12 @@ export async function requireAdmin(
 
   const canAccessSettings = isPrimary || profile.canAccessSettings !== false;
   const canManageAdmins = isPrimary || profile.canManageAdmins === true;
+  const isOperationsAdmin = !isPrimary && profile.role === 'admin' && profile.canAccessSettings === false;
+  if (isOperationsAdmin && !options.allowOperations) throw new Error('OPERATIONS_ADMIN_FORBIDDEN');
   if (options.requireSettings && !canAccessSettings) throw new Error('SETTINGS_FORBIDDEN');
   if (options.requireManageAdmins && !canManageAdmins) throw new Error('ADMIN_MANAGEMENT_FORBIDDEN');
 
-  return { uid: decoded.uid, email, isPrimary, canAccessSettings, canManageAdmins };
+  return { uid: decoded.uid, email, isPrimary, canAccessSettings, canManageAdmins, isOperationsAdmin };
 }
 
 export function adminAuthError(error: unknown) {

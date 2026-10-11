@@ -21,7 +21,7 @@ export default function AdminUsersPage() {
   const [password, setPassword] = useState("")
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
-  const canManage = userProfile?.role === "admin" && userProfile?.canAccessSettings !== false
+  const canManage = userProfile?.role === "admin" && userProfile?.canManageAdmins === true
 
   const authHeaders = useCallback(async () => ({ Authorization: `Bearer ${await user?.getIdToken()}` }), [user])
   const loadAdmins = useCallback(async () => {
@@ -46,7 +46,7 @@ export default function AdminUsersPage() {
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.error || "No se pudo crear el administrador.")
       setName(""); setEmail(""); setPassword("")
-      toast({ title: "Administrador creado", description: "Podrá operar el sistema, pero no tendrá acceso a Configuración." })
+      toast({ title: "Administrador operativo creado", description: "Solo tendrá acceso a clientes, subagentes y solicitudes de depósito." })
       await loadAdmins()
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error al crear", description: error.message })
@@ -59,9 +59,9 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div><h1 className="text-2xl font-black text-primary flex items-center gap-2"><ShieldCheck /> Administradores</h1><p className="text-sm text-muted-foreground">Crea administradores operativos sin acceso al módulo de Configuración.</p></div>
+      <div><h1 className="text-2xl font-black text-primary flex items-center gap-2"><ShieldCheck /> Administradores</h1><p className="text-sm text-muted-foreground">Crea administradores operativos con acceso limitado a clientes, subagentes y solicitudes.</p></div>
       <Card>
-        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><UserPlus className="w-5 h-5" /> Nuevo administrador secundario</CardTitle><CardDescription>La contraseña debe contener al menos 8 caracteres.</CardDescription></CardHeader>
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><UserPlus className="w-5 h-5" /> Nuevo administrador operativo</CardTitle><CardDescription>Podrá consultar clientes y subagentes, crear subagentes y revisar solicitudes. La contraseña debe contener al menos 8 caracteres.</CardDescription></CardHeader>
         <CardContent className="grid md:grid-cols-3 gap-4">
           <div className="space-y-1"><Label>Nombre</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div className="space-y-1"><Label>Correo</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
@@ -70,8 +70,8 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-lg">Administradores registrados</CardTitle><CardDescription>El administrador secundario no puede abrir Configuración.</CardDescription></div><Button size="sm" variant="ghost" onClick={loadAdmins}><RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /></Button></CardHeader>
-        <CardContent className="space-y-2">{admins.map((admin) => <div key={admin.uid} className="flex items-center justify-between border rounded-lg p-3"><div><div className="font-bold text-sm">{admin.name}</div><div className="text-xs text-muted-foreground">{admin.email}</div></div><Badge className={admin.canAccessSettings ? "bg-blue-600" : "bg-slate-600"}>{admin.canAccessSettings ? "Principal" : "Secundario · Sin configuración"}</Badge></div>)}</CardContent>
+        <CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-lg">Administradores registrados</CardTitle><CardDescription>El administrador operativo no puede acceder a tasas, integraciones ni configuración.</CardDescription></div><Button size="sm" variant="ghost" onClick={loadAdmins}><RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /></Button></CardHeader>
+        <CardContent className="space-y-2">{admins.map((admin) => <div key={admin.uid} className="flex items-center justify-between border rounded-lg p-3"><div><div className="font-bold text-sm">{admin.name}</div><div className="text-xs text-muted-foreground">{admin.email}</div></div><Badge className={admin.canAccessSettings ? "bg-blue-600" : "bg-emerald-700"}>{admin.canAccessSettings ? "Principal" : "Operativo · Acceso limitado"}</Badge></div>)}</CardContent>
       </Card>
     </div>
   )

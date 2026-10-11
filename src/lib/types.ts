@@ -12,7 +12,7 @@ export interface UserProfile {
   walletBalance: number; // Saldo disponible en la moneda principal del cliente
   savingsBalance?: number; // Bolsillo protegido en la moneda principal del cliente
   walletBalanceDOP?: number; // Saldo equivalente o local en DOP
-  primaryCurrency?: 'USD' | 'DOP'; // Moneda real de la billetera del cliente
+  primaryCurrency?: 'USD' | 'DOP' | 'HTG'; // Moneda real de la billetera del cliente
   remittanceFeePercent?: number; // Tarifa individual descontada del monto enviado
   benefitRatePercent?: number; // Porcentaje individual acumulable sobre remesas
   benefitAccruedDOP?: number; // Beneficio pendiente de acreditar, siempre en pesos dominicanos
@@ -28,7 +28,7 @@ export interface ClientDepositRecord {
   clientCode: string;
   clientPhone?: string;
   amount: number; // Monto entregado por el cliente
-  currency: 'USD' | 'DOP';
+  currency: 'USD' | 'DOP' | 'HTG';
   amountCreditedUSD: number; // Monto neto acreditado a la billetera en USD
   method: 'sub_agent' | 'bank_transfer' | 'admin_manual';
   subAgentId?: string; // SA-101, etc.
@@ -53,7 +53,7 @@ export interface ClientWalletMovement {
   description: string;
   amountUSD: number;
   amount?: number;
-  currency?: 'USD' | 'DOP';
+  currency?: 'USD' | 'DOP' | 'HTG';
   direction: 'in' | 'out' | 'transfer';
   targetPocket: 'main' | 'savings';
   date: string;
@@ -179,6 +179,7 @@ export interface SystemSettings {
   // Public Rates (Tasa a todo público)
   publicRateDOP: number; // e.g. 58.50
   publicRateHTG: number; // e.g. 132.20
+  publicRateDOPToHTG?: number; // e.g. 2.030 HTG por cada DOP
   publicRateUSD: number; // 1.00
 
   // Norma General de Tasas y Reparto de Beneficios (Envíos a Haití)
@@ -265,6 +266,7 @@ export interface RateAuditLog {
   updatedBy: string;
   publicRateDOP: number;
   publicRateHTG: number;
+  publicRateDOPToHTG?: number;
   agentRateDOP: number;
   agentRateHTG: number;
   agentPayoutPercentage: number;
@@ -345,6 +347,7 @@ export interface SubAgentModules {
   mobileTopups: boolean; // Recargas Móviles
   accounting: boolean; // Contabilidad y Arqueo de Caja
   reports: boolean; // Reportes y Métricas de Comisión
+  thermalReceipts?: boolean; // Factura 58 mm, impresión Bluetooth y PDF/WhatsApp
 }
 
 export interface SubAgentLocation {
@@ -374,10 +377,12 @@ export interface SubAgent {
   // Configuración Financiera y de Beneficios
   commissionRatePercent: number; // Tasa en % de beneficios (e.g. 2.5%)
   remittanceFeePercent?: number; // Tarifa individual descontada de cada remesa
-  primaryCurrency?: 'USD' | 'DOP'; // Moneda real de la billetera operativa
+  primaryCurrency?: 'USD' | 'DOP' | 'HTG'; // Moneda real de la billetera operativa
   localCurrency: 'DOP' | 'HTG' | 'USD'; // Moneda local del subagente
   walletBalance: number; // Balance operativo actual en su moneda local
   creditLimit?: number; // Límite de crédito opcional
+  accountMode?: 'prepaid' | 'postpaid'; // Prepago usa fondos propios; pospago usa fondos de HispaniolaPay
+  postpaidUsedDOP?: number; // Consumo acumulado contra la cuenta principal
 
   // Ubicación y GPS
   location: SubAgentLocation;

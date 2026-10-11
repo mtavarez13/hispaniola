@@ -5,14 +5,23 @@ import android.animation.ObjectAnimator;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.res.Configuration;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
@@ -38,11 +47,18 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.MultiFormatWriter;
+import com.google.zxing.common.BitMatrix;
+import com.caverock.androidsvg.SVG;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.text.NumberFormat;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -56,6 +72,7 @@ public final class MainActivity extends Activity {
     private static final int BLUE = Color.rgb(16, 91, 196);
     private static final int CYAN = Color.rgb(30, 174, 219);
     private static final int GREEN = Color.rgb(11, 151, 111);
+    private static final int PURPLE = Color.rgb(112, 72, 232);
     private static final int RED = Color.rgb(210, 54, 69);
     private static final int AMBER = Color.rgb(231, 151, 31);
     private int INK;
@@ -65,10 +82,14 @@ public final class MainActivity extends Activity {
     private int SURFACE;
     private int SURFACE_ALT;
     private boolean darkMode;
+    private String language = "es";
+    private String pendingRecipient = "";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService imageExecutor = Executors.newFixedThreadPool(3);
     private final NumberFormat usd = NumberFormat.getCurrencyInstance(Locale.US);
     private ApiClient api;
+    private ThermalReceiptManager receiptManager;
     private GoogleSignInClient googleClient;
     private JSONObject accountData;
     private LinearLayout content;
@@ -76,11 +97,14 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        language = getSharedPreferences("hispaniola_ui", MODE_PRIVATE).getString("language", "es");
+        capturePaymentLink(getIntent());
         applySavedAppearance();
         Window window = getWindow();
         window.setStatusBarColor(NAVY);
         window.setNavigationBarColor(SURFACE);
         api = new ApiClient(this);
+        receiptManager = new ThermalReceiptManager(this);
         GoogleSignInOptions googleOptions = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(getString(R.string.default_web_client_id)).requestEmail().build();
         googleClient = GoogleSignIn.getClient(this, googleOptions);
@@ -113,6 +137,36 @@ public final class MainActivity extends Activity {
     private void setAppearance(String value) {
         getSharedPreferences("hispaniola_ui", MODE_PRIVATE).edit().putString("appearance", value).apply();
         recreate();
+    }
+
+    private void capturePaymentLink(Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        Uri uri = intent.getData();
+        String recipient = uri.getQueryParameter("to");
+        if (recipient != null && !recipient.trim().isEmpty()) pendingRecipient = recipient.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private void chooseLanguage() {
+        String[] codes = {"es", "en", "ht"};
+        String[] labels = {tr("Español"), tr("Inglés"), tr("Criollo haitiano")};
+        int checked = "en".equals(language) ? 1 : "ht".equals(language) ? 2 : 0;
+        new AlertDialog.Builder(this).setTitle(tr("Idioma")).setSingleChoiceItems(labels, checked, (dialog, which) -> {
+            language = codes[which];
+            getSharedPreferences("hispaniola_ui", MODE_PRIVATE).edit().putString("language", language).apply();
+            JSONObject current = account();
+            executor.execute(() -> {
+                try {
+                    api.updateProfile(new JSONObject()
+                            .put("name", current.optString("name", "Cliente"))
+                            .put("phone", current.optString("phone", ""))
+                            .put("idNumber", current.optString("idNumber", ""))
+                            .put("country", current.optString("country", "DO"))
+                            .put("language", language));
+                } catch (Exception ignored) { }
+            });
+            dialog.dismiss();
+            recreate();
+        }).setNegativeButton(tr("Cancelar"), null).show();
     }
 
     private void showLogin() {
@@ -208,7 +262,12 @@ public final class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (api != null && api.hasSession() && (intent.getBooleanExtra("openNotifications", false) || "OPEN_NOTIFICATIONS".equals(intent.getAction()))) showNotifications();
+        capturePaymentLink(intent);
+        if (api != null && api.hasSession() && !pendingRecipient.isEmpty()) {
+            String recipient = pendingRecipient;
+            pendingRecipient = "";
+            showTransfer(recipient);
+        } else if (api != null && api.hasSession() && (intent.getBooleanExtra("openNotifications", false) || "OPEN_NOTIFICATIONS".equals(intent.getAction()))) showNotifications();
     }
 
     private void loadAccount(boolean fullScreen) {
@@ -216,7 +275,18 @@ public final class MainActivity extends Activity {
         executor.execute(() -> {
             try {
                 accountData = api.account();
-                runOnUiThread(() -> { syncPushToken(); if (getIntent().getBooleanExtra("openNotifications", false) || "OPEN_NOTIFICATIONS".equals(getIntent().getAction())) { getIntent().removeExtra("openNotifications"); getIntent().setAction(null); showNotifications(); } else showHome(); });
+                runOnUiThread(() -> {
+                    syncPushToken();
+                    if (!getSharedPreferences("hispaniola_ui", MODE_PRIVATE).contains("language")) {
+                        String savedLanguage = account().optString("language", "es");
+                        if ("es".equals(savedLanguage) || "en".equals(savedLanguage) || "ht".equals(savedLanguage)) language = savedLanguage;
+                    }
+                    if (!pendingRecipient.isEmpty()) {
+                        String recipient = pendingRecipient; pendingRecipient = ""; showTransfer(recipient);
+                    } else if (getIntent().getBooleanExtra("openNotifications", false) || "OPEN_NOTIFICATIONS".equals(getIntent().getAction())) {
+                        getIntent().removeExtra("openNotifications"); getIntent().setAction(null); showNotifications();
+                    } else showHome();
+                });
             } catch (Exception error) {
                 runOnUiThread(() -> {
                     if (error instanceof ApiClient.ApiException && ((ApiClient.ApiException) error).statusCode == 401) {
@@ -242,11 +312,16 @@ public final class MainActivity extends Activity {
         actions.addView(space(dp(12), 1));
         actions.addView(actionTile("▣", "Billetera", "Saldo e historial", GREEN, v -> showWallet()), new LinearLayout.LayoutParams(0, dp(132), 1));
         content.addView(actions, params(-1, -2, 10));
+        content.addView(actionTile("⇄", "Transferir saldo", "Cliente o subagente · comisión 0.30%", GREEN, v -> showTransfer()), params(-1, dp(98), 12));
+        content.addView(actionTile("⚡", "Recargas y servicios", "Recargas móviles y pago de facturas", AMBER, v -> showRechargeServices()), params(-1, dp(98), 12));
         content.addView(actionTile("+", "Depositar en billetera", "Cuentas autorizadas · 0% de comisión", CYAN, v -> showDeposit()), params(-1, dp(98), 12));
         View alerts = actionTile("●", "Centro de notificaciones", "Depósitos, remesas y avisos de seguridad", AMBER, v -> showNotifications());
         content.addView(alerts, params(-1, dp(98), 12));
         section("Actividad reciente");
         addRecent(3);
+        Button fullHistory = secondaryButton("Ver historial completo");
+        fullHistory.setOnClickListener(v -> openHistory());
+        content.addView(fullHistory, params(-1, dp(52), 12));
         info("Operaciones protegidas", "Cada envío se valida en el servidor. Ninguna clave del proveedor se guarda en tu teléfono.");
     }
 
@@ -264,14 +339,429 @@ public final class MainActivity extends Activity {
         Button deposit = primaryButton("+ Depositar sin comisión");
         deposit.setOnClickListener(v -> showDeposit());
         content.addView(deposit, params(-1, dp(54), 12));
+        Button transfer = secondaryButton("⇄ Transferir a cliente o subagente");
+        transfer.setOnClickListener(v -> showTransfer());
+        content.addView(transfer, params(-1, dp(54), 10));
         double available = walletBalance(account);
-        double availableUsd = "DOP".equals(walletCurrency()) ? available / rates.optDouble("dopPerUsd", 58.5) : available;
-        info("Equivalencias", String.format(Locale.US, "RD$ %,.2f DOP   ·   %,.0f HTG", "DOP".equals(walletCurrency()) ? available : availableUsd * rates.optDouble("dopPerUsd", 58.5), availableUsd * rates.optDouble("htgPerUsd", 132.2)));
+        double availableUsd = toUsd(available, walletCurrency(), rates);
+        info("Equivalencias", String.format(Locale.US, "US$ %,.2f   ·   RD$ %,.2f DOP   ·   G %,.2f HTG", availableUsd, availableUsd * rates.optDouble("dopPerUsd", 58.5), availableUsd * rates.optDouble("htgPerUsd", 132.2)));
         double benefit = account.optDouble("benefitAccruedDOP", 0);
         double benefitRate = account.optDouble("benefitRatePercent", 0);
-        if (benefitRate > 0) info("Beneficio acumulado", String.format(Locale.US, "RD$ %,.2f acumulados · Tasa %.2f%%", benefit, benefitRate));
+        if (benefitRate > 0 || benefit > 0) {
+            info("Beneficio acumulado", String.format(Locale.US, "RD$ %,.2f acumulados · Tasa %.2f%%", benefit, benefitRate));
+            Button redeem = secondaryButton(benefit > 0 ? "Convertir beneficios en balance" : "Sin beneficios pendientes");
+            redeem.setEnabled(benefit > 0);
+            redeem.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("Canjear beneficios")
+                    .setMessage(String.format(Locale.US, "RD$%,.2f serán convertidos a la moneda de tu billetera. El acumulado quedará en cero y el canje aparecerá en el historial.", benefit))
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Canjear ahora", (dialog, which) -> redeemBenefits(redeem))
+                    .show());
+            content.addView(redeem, params(-1, dp(54), 10));
+        }
         section("Movimientos y remesas");
         addRecent(20);
+        Button fullHistory = secondaryButton("Ver historial completo y facturas");
+        fullHistory.setOnClickListener(v -> openHistory());
+        content.addView(fullHistory, params(-1, dp(52), 12));
+    }
+
+    private void redeemBenefits(Button button) {
+        button.setEnabled(false);
+        button.setText("Canjeando…");
+        executor.execute(() -> {
+            try {
+                api.redeemBenefits();
+                accountData = api.account();
+                runOnUiThread(() -> { toast("Beneficios convertidos en balance."); showWallet(); });
+            } catch (Exception error) {
+                runOnUiThread(() -> { button.setEnabled(true); button.setText("Convertir beneficios en balance"); errorDialog("No se pudo completar el canje", friendly(error)); });
+            }
+        });
+    }
+
+    private void showRechargeServices() {
+        activeScreen = "Servicios";
+        showLoading("Cargando recargas y servicios…");
+        executor.execute(() -> {
+            try {
+                JSONObject response = api.rechargeProducts();
+                runOnUiThread(() -> renderRechargeServices(response));
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    renderShell("Recargas y servicios", "Usa el mismo balance de tu billetera");
+                    errorDialog("Servicio no disponible", friendly(error));
+                });
+            }
+        });
+    }
+
+    private void renderRechargeServices(JSONObject response) {
+        activeScreen = "Servicios";
+        JSONArray source = response.optJSONArray("products");
+        JSONArray mobileProducts = new JSONArray();
+        JSONArray dataPlanProducts = new JSONArray();
+        JSONArray pinProducts = new JSONArray();
+        JSONArray invoiceProducts = new JSONArray();
+        if (source != null) {
+            for (int i = 0; i < source.length(); i++) {
+                JSONObject product = source.optJSONObject(i);
+                if (product == null) continue;
+                boolean enabled = product.optBoolean("enabled", true);
+                String category = product.optString("category");
+                String type = product.optString("type");
+                if (enabled && ("mobile-topup".equals(category) || "Recarga".equalsIgnoreCase(type))) mobileProducts.put(product);
+                if (enabled && ("data-plan".equals(category) || "Paquetico".equalsIgnoreCase(type))) dataPlanProducts.put(product);
+                if (enabled && ("pin".equals(category) || "Pin".equalsIgnoreCase(type))) pinProducts.put(product);
+                if (isInvoiceProduct(product)) invoiceProducts.put(product);
+            }
+        }
+        double feePercent = response.optDouble("feePercent", 0);
+        renderShell("Recargas y servicios", "Una sola billetera para todas tus operaciones");
+        balanceCard(walletBalance(account()));
+        info("Balance único", "Las recargas, facturas y remesas utilizan el mismo saldo disponible. La separación operativa se gestiona únicamente en administración.");
+        section("Selecciona un servicio");
+        content.addView(actionTile("⚡", "Recarga móvil", "Claro, Altice, Viva y productos disponibles", AMBER,
+                v -> showMobileTopup(mobileProducts, feePercent)), params(-1, dp(112), 10));
+        content.addView(actionTile("📶", "Paqueticos", "Data, minutos y redes sociales", GREEN,
+                v -> showDataPlans(dataPlanProducts, feePercent)), params(-1, dp(112), 10));
+        content.addView(actionTile("🔑", "Comprar PIN", "Pines electrónicos disponibles al instante", PURPLE,
+                v -> showPinPurchase(pinProducts, feePercent)), params(-1, dp(112), 10));
+        content.addView(actionTile("▤", "Pagar factura", "Consulta el contrato antes de confirmar", BLUE,
+                v -> showInvoicePayment(invoiceProducts, feePercent)), params(-1, dp(112), 10));
+        if (mobileProducts.length() == 0 && dataPlanProducts.length() == 0 && pinProducts.length() == 0 && invoiceProducts.length() == 0) {
+            info("Sin productos", "El proveedor no devolvió productos disponibles en este momento.");
+        }
+    }
+
+    private void showDataPlans(JSONArray products, double feePercent) {
+        activeScreen = "Servicios";
+        renderShell("Paqueticos", "Activa data, minutos y redes sociales");
+        balanceCard(walletBalance(account()));
+        final int[] selectedProduct = {-1};
+        final int[] selectedPlan = {-1};
+        final JSONArray[] availablePlans = {new JSONArray()};
+        Button productButton = secondaryButton("Seleccionar compañía");
+        content.addView(productButton, params(-1, dp(54), 14));
+        EditText phone = input("Número de teléfono", InputType.TYPE_CLASS_PHONE);
+        content.addView(phone, params(-1, dp(56), 12));
+        Button lookup = secondaryButton("Consultar paqueticos disponibles");
+        content.addView(lookup, params(-1, dp(54), 12));
+        Button planButton = secondaryButton("Seleccionar paquetico");
+        planButton.setEnabled(false);
+        content.addView(planButton, params(-1, dp(54), 12));
+        TextView total = text("Selecciona un paquetico para ver el total.", 14, INK, Typeface.BOLD);
+        content.addView(total, params(-1, -2, 14));
+        Button submit = primaryButton("Activar paquetico");
+        submit.setEnabled(false);
+
+        Runnable resetPlans = () -> {
+            selectedPlan[0] = -1;
+            availablePlans[0] = new JSONArray();
+            planButton.setText("Seleccionar paquetico");
+            planButton.setEnabled(false);
+            submit.setEnabled(false);
+            total.setText("Consulta los planes disponibles para este número.");
+        };
+        productButton.setOnClickListener(v -> chooseProduct(products, selectedProduct, productButton, product -> resetPlans.run()));
+        phone.addTextChangedListener(new SimpleWatcher() { @Override public void afterTextChanged(Editable editable) { resetPlans.run(); } });
+        lookup.setOnClickListener(v -> {
+            JSONObject product = selectedProduct[0] >= 0 ? products.optJSONObject(selectedProduct[0]) : null;
+            String cleanPhone = phone.getText().toString().replaceAll("\\D", "");
+            if (product == null || cleanPhone.length() < 10) { errorDialog("Datos incompletos", "Selecciona la compañía e indica un teléfono válido."); return; }
+            lookup.setEnabled(false); lookup.setText("Consultando…");
+            executor.execute(() -> {
+                try {
+                    JSONObject response = api.lookupDataPlans(product.optInt("id"), cleanPhone);
+                    JSONArray found = response.optJSONArray("plans");
+                    if (found == null) found = new JSONArray();
+                    JSONArray finalFound = found;
+                    runOnUiThread(() -> {
+                        lookup.setEnabled(true); lookup.setText("Consultar paqueticos disponibles");
+                        availablePlans[0] = finalFound;
+                        planButton.setEnabled(finalFound.length() > 0);
+                        if (finalFound.length() == 0) errorDialog("Sin paqueticos", "El proveedor no devolvió planes disponibles para este número.");
+                        else toast(finalFound.length() + " paqueticos disponibles");
+                    });
+                } catch (Exception error) {
+                    runOnUiThread(() -> { lookup.setEnabled(true); lookup.setText("Consultar paqueticos disponibles"); errorDialog("No se cargaron los paqueticos", friendly(error)); });
+                }
+            });
+        });
+        planButton.setOnClickListener(v -> choosePlan(availablePlans[0], selectedPlan, planButton, plan -> {
+            double value = plan.optDouble("price", 0);
+            double finalTotal = round(value + value * feePercent / 100d);
+            total.setText(String.format(Locale.US, "%s\nPrecio RD$%,.2f · Tarifa %.2f%% · Total RD$%,.2f", plan.optString("name", "Paquetico"), value, feePercent, finalTotal));
+            submit.setEnabled(value > 0);
+        }));
+        submit.setOnClickListener(v -> {
+            JSONObject product = selectedProduct[0] >= 0 ? products.optJSONObject(selectedProduct[0]) : null;
+            JSONObject plan = selectedPlan[0] >= 0 ? availablePlans[0].optJSONObject(selectedPlan[0]) : null;
+            String cleanPhone = phone.getText().toString().replaceAll("\\D", "");
+            if (product == null || plan == null) return;
+            new AlertDialog.Builder(this).setTitle("Confirmar paquetico")
+                    .setMessage(product.optString("name") + "\n" + plan.optString("name") + "\nTeléfono: " + cleanPhone + "\n" + total.getText())
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Activar ahora", (dialog, which) -> executeServiceRecharge(submit,
+                            jsonPayload("action", "data_plan", "productId", product.optInt("id"), "phone", cleanPhone, "planId", String.valueOf(plan.opt("id")), "idempotencyKey", UUID.randomUUID().toString()), "Paquetico activado"))
+                    .show();
+        });
+        content.addView(submit, params(-1, dp(56), 12));
+    }
+
+    private void showMobileTopup(JSONArray products, double feePercent) {
+        activeScreen = "Servicios";
+        renderShell("Recarga móvil", "Débito seguro desde tu balance único");
+        balanceCard(walletBalance(account()));
+        final int[] selected = {-1};
+        Button productButton = secondaryButton("Seleccionar compañía o producto");
+        content.addView(productButton, params(-1, dp(54), 14));
+        TextView limits = text("Selecciona el producto para consultar los límites.", 12, MUTED, Typeface.NORMAL);
+        content.addView(limits, params(-1, -2, 6));
+        EditText phone = input("Número de teléfono", InputType.TYPE_CLASS_PHONE);
+        content.addView(phone, params(-1, dp(56), 12));
+        EditText amount = input("Monto en pesos dominicanos", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        content.addView(amount, params(-1, dp(56), 10));
+        TextView total = text("Total: RD$0.00", 16, INK, Typeface.BOLD);
+        content.addView(total, params(-1, -2, 14));
+        TextWatcher amountWatcher = new SimpleWatcher() {
+            @Override public void afterTextChanged(Editable editable) {
+                double value = parseAmount(editable.toString());
+                total.setText(String.format(Locale.US, "Recarga RD$%,.2f  ·  Tarifa %.2f%%  ·  Total RD$%,.2f", value, feePercent, value + value * feePercent / 100d));
+            }
+        };
+        amount.addTextChangedListener(amountWatcher);
+        productButton.setOnClickListener(v -> chooseProduct(products, selected, productButton, product ->
+                limits.setText(String.format(Locale.US, "Monto permitido: RD$%,.2f – RD$%,.2f", product.optDouble("min", 0), product.optDouble("max", 0)))));
+        Button submit = primaryButton("Confirmar recarga");
+        submit.setOnClickListener(v -> {
+            JSONObject product = selected[0] >= 0 ? products.optJSONObject(selected[0]) : null;
+            double value = parseAmount(amount.getText().toString());
+            String cleanPhone = phone.getText().toString().replaceAll("\\D", "");
+            if (product == null) { errorDialog("Selecciona un producto", "Elige la compañía antes de continuar."); return; }
+            if (cleanPhone.length() < 10 || value <= 0) { errorDialog("Datos incompletos", "Indica un teléfono y un monto válidos."); return; }
+            double finalTotal = round(value + value * feePercent / 100d);
+            new AlertDialog.Builder(this).setTitle("Confirmar recarga")
+                    .setMessage(product.optString("name") + "\nTeléfono: " + cleanPhone + "\nRecarga: RD$" + String.format(Locale.US, "%,.2f", value) + "\nTotal: RD$" + String.format(Locale.US, "%,.2f", finalTotal))
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Recargar ahora", (dialog, which) -> executeServiceRecharge(submit,
+                            jsonPayload("action", "mobile_topup", "productId", product.optInt("id"), "phone", cleanPhone, "amount", value, "idempotencyKey", UUID.randomUUID().toString()), "Recarga completada"))
+                    .show();
+        });
+        content.addView(submit, params(-1, dp(56), 18));
+    }
+
+    private void showPinPurchase(JSONArray products, double feePercent) {
+        activeScreen = "Servicios";
+        renderShell("Comprar PIN", "Recibe el código electrónico inmediatamente");
+        balanceCard(walletBalance(account()));
+        final int[] selected = {-1};
+        Button productButton = secondaryButton("Seleccionar proveedor de PIN");
+        content.addView(productButton, params(-1, dp(54), 14));
+        TextView limits = text("Selecciona un producto para consultar el precio permitido.", 12, MUTED, Typeface.NORMAL);
+        content.addView(limits, params(-1, -2, 6));
+        EditText price = input("Precio del PIN en pesos dominicanos", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        content.addView(price, params(-1, dp(56), 12));
+        TextView total = text("Total: RD$0.00", 16, INK, Typeface.BOLD);
+        content.addView(total, params(-1, -2, 14));
+        price.addTextChangedListener(new SimpleWatcher() {
+            @Override public void afterTextChanged(Editable editable) {
+                double value = parseAmount(editable.toString());
+                double finalTotal = round(value + value * feePercent / 100d);
+                total.setText(String.format(Locale.US, "PIN RD$%,.2f  ·  Tarifa %.2f%%  ·  Total RD$%,.2f", value, feePercent, finalTotal));
+            }
+        });
+        productButton.setOnClickListener(v -> chooseProduct(products, selected, productButton, product -> {
+            double minimum = product.optDouble("min", 0);
+            double maximum = product.optDouble("max", 0);
+            limits.setText(maximum > 0
+                    ? String.format(Locale.US, "Precio permitido: RD$%,.2f – RD$%,.2f", minimum, maximum)
+                    : String.format(Locale.US, "Precio mínimo: RD$%,.2f", minimum));
+        }));
+        Button submit = primaryButton("Comprar PIN");
+        submit.setOnClickListener(v -> {
+            JSONObject product = selected[0] >= 0 ? products.optJSONObject(selected[0]) : null;
+            double value = parseAmount(price.getText().toString());
+            if (product == null) { errorDialog("Selecciona un producto", "Elige el proveedor del PIN antes de continuar."); return; }
+            double minimum = product.optDouble("min", 0);
+            double maximum = product.optDouble("max", Double.MAX_VALUE);
+            if (value <= 0 || value < minimum || value > maximum) { errorDialog("Precio no permitido", limits.getText().toString()); return; }
+            double finalTotal = round(value + value * feePercent / 100d);
+            new AlertDialog.Builder(this).setTitle("Confirmar compra de PIN")
+                    .setMessage(product.optString("name") + "\nPrecio: RD$" + String.format(Locale.US, "%,.2f", value) + "\nTotal: RD$" + String.format(Locale.US, "%,.2f", finalTotal))
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Comprar ahora", (dialog, which) -> executeServiceRecharge(submit,
+                            jsonPayload("action", "pin_purchase", "productId", product.optInt("id"), "price", value, "idempotencyKey", UUID.randomUUID().toString()), "PIN comprado"))
+                    .show();
+        });
+        content.addView(submit, params(-1, dp(56), 18));
+    }
+
+    private void showInvoicePayment(JSONArray products, double feePercent) {
+        activeScreen = "Servicios";
+        renderShell("Pagar factura", "Consulta primero el contrato o NIC");
+        balanceCard(walletBalance(account()));
+        final int[] selected = {-1};
+        final JSONObject[] invoice = {null};
+        Button productButton = secondaryButton("Seleccionar empresa de servicio");
+        content.addView(productButton, params(-1, dp(54), 14));
+        EditText nic = input("Contrato, NIC o referencia", InputType.TYPE_CLASS_TEXT);
+        content.addView(nic, params(-1, dp(56), 12));
+        TextView invoiceInfo = text("", 14, INK, Typeface.BOLD);
+        invoiceInfo.setVisibility(View.GONE);
+        content.addView(invoiceInfo, params(-1, -2, 14));
+        Button pay = primaryButton("Pagar factura");
+        pay.setEnabled(false);
+        productButton.setOnClickListener(v -> chooseProduct(products, selected, productButton, product -> { invoice[0] = null; invoiceInfo.setVisibility(View.GONE); pay.setEnabled(false); }));
+        Button lookup = secondaryButton("Consultar factura");
+        lookup.setOnClickListener(v -> {
+            JSONObject product = selected[0] >= 0 ? products.optJSONObject(selected[0]) : null;
+            String contract = nic.getText().toString().trim();
+            if (product == null || contract.isEmpty()) { errorDialog("Datos incompletos", "Selecciona la empresa e indica el contrato o NIC."); return; }
+            lookup.setEnabled(false); lookup.setText("Consultando…");
+            executor.execute(() -> {
+                try {
+                    JSONObject response = api.lookupServiceInvoice(product.optInt("id"), contract);
+                    JSONObject found = response.optJSONObject("invoice");
+                    runOnUiThread(() -> {
+                        lookup.setEnabled(true); lookup.setText("Consultar factura"); invoice[0] = found;
+                        if (found == null) { errorDialog("Factura no encontrada", "El proveedor no devolvió información de la factura."); return; }
+                        double value = found.optDouble("amount", 0);
+                        double finalTotal = round(value + value * feePercent / 100d);
+                        invoiceInfo.setText(String.format(Locale.US, "%s\nContrato: %s\nFactura: RD$%,.2f · Tarifa %.2f%% · Total RD$%,.2f", found.optString("name", "Titular"), found.optString("nic", contract), value, feePercent, finalTotal));
+                        invoiceInfo.setVisibility(View.VISIBLE); pay.setEnabled(value > 0);
+                    });
+                } catch (Exception error) {
+                    runOnUiThread(() -> { lookup.setEnabled(true); lookup.setText("Consultar factura"); errorDialog("Factura no encontrada", friendly(error)); });
+                }
+            });
+        });
+        content.addView(lookup, params(-1, dp(54), 12));
+        pay.setOnClickListener(v -> {
+            JSONObject product = selected[0] >= 0 ? products.optJSONObject(selected[0]) : null;
+            if (product == null || invoice[0] == null) return;
+            new AlertDialog.Builder(this).setTitle("Confirmar pago")
+                    .setMessage(invoiceInfo.getText())
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Pagar ahora", (dialog, which) -> executeServiceRecharge(pay,
+                            jsonPayload("action", "invoice_payment", "productId", product.optInt("id"), "nic", nic.getText().toString().trim(), "idempotencyKey", UUID.randomUUID().toString()), "Factura pagada"))
+                    .show();
+        });
+        content.addView(pay, params(-1, dp(56), 12));
+    }
+
+    private interface ProductSelection { void selected(JSONObject product); }
+
+    private void chooseProduct(JSONArray products, int[] selected, Button button, ProductSelection callback) {
+        if (products.length() == 0) { errorDialog("Sin productos", "No hay productos disponibles para este servicio."); return; }
+        LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); list.setPadding(dp(12), dp(8), dp(12), dp(8));
+        ScrollView scroll = new ScrollView(this); scroll.addView(list);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Seleccionar proveedor").setView(scroll).setNegativeButton("Cancelar", null).create();
+        for (int i = 0; i < products.length(); i++) {
+            int index = i; JSONObject product = products.optJSONObject(i);
+            LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(12), dp(10), dp(12), dp(10)); row.setBackground(round(SURFACE_ALT, 14, LINE, 1));
+            boolean enabled = product.optBoolean("enabled", true);
+            ImageView logo = new ImageView(this); logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE); logo.setPadding(dp(7), dp(7), dp(7), dp(7)); logo.setBackground(round(Color.WHITE, 28, LINE, 1)); row.addView(logo, new LinearLayout.LayoutParams(dp(56), dp(56)));
+            TextView label = text(product.optString("name", "Producto " + (i + 1)), 16, INK, Typeface.BOLD); LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -2, 1); labelParams.setMargins(dp(12), 0, 0, 0); row.addView(label, labelParams);
+            if (!enabled) { TextView unavailable = text("Pendiente de activación", 10, AMBER, Typeface.BOLD); row.addView(unavailable); row.setAlpha(.62f); }
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(72)); rowParams.setMargins(0, dp(4), 0, dp(4)); list.addView(row, rowParams);
+            loadProviderLogo(logo, product);
+            row.setOnClickListener(v -> { if (!enabled) { toast("Este servicio debe ser habilitado por el proveedor."); return; } selected[0] = index; button.setText(product.optString("name", "Producto")); callback.selected(product); dialog.dismiss(); });
+        }
+        dialog.show();
+    }
+
+    private interface PlanSelection { void selected(JSONObject plan); }
+
+    private void choosePlan(JSONArray plans, int[] selected, Button button, PlanSelection callback) {
+        if (plans.length() == 0) { errorDialog("Sin paqueticos", "Consulta primero los planes disponibles."); return; }
+        String[] labels = new String[plans.length()];
+        for (int i = 0; i < plans.length(); i++) { JSONObject plan = plans.optJSONObject(i); labels[i] = plan.optString("name", "Paquetico") + " · RD$" + String.format(Locale.US, "%,.2f", plan.optDouble("price", 0)); }
+        new AlertDialog.Builder(this).setTitle("Seleccionar paquetico").setSingleChoiceItems(labels, selected[0], (dialog, which) -> {
+            selected[0] = which; JSONObject plan = plans.optJSONObject(which); button.setText(labels[which]); callback.selected(plan); dialog.dismiss();
+        }).setNegativeButton("Cancelar", null).show();
+    }
+
+    private void loadProviderLogo(ImageView target, JSONObject product) {
+        String file = "";
+        String providerName = product.optString("name");
+        String suppliedImage = product.optString("image").trim();
+        String normalizedProvider = normalizeProductName(providerName);
+        if (normalizedProvider.contains("paso rapido")) normalizedProvider = "paso rapido";
+        else if (normalizedProvider.contains("seguro de ley")) normalizedProvider = "seguro de ley";
+        else {
+            String[] knownProviders = {"midas seguros", "juancito sport", "star sport", "paso rapido", "pgr multas", "coraavega", "coraplata", "coraaplata", "corasan", "coraasan", "coaarom", "edenorte", "edesur", "edeeste", "digicel", "natcom", "altice", "claro", "viva", "moun", "wind", "cepm", "ceb", "adn", "caasd", "dgii", "tss", "activa", "midas"};
+            for (String known : knownProviders) if (normalizedProvider.contains(known)) { normalizedProvider = known; break; }
+        }
+        switch (normalizedProvider) {
+            case "claro": file = "claro.svg"; break; case "altice": file = "altice.svg"; break; case "viva": file = "viva.svg"; break;
+            case "digicel": file = "digicel.svg"; break; case "moun": file = "moun.svg"; break; case "natcom": file = "natcom.svg"; break;
+            case "wind": file = "wind.png"; break; case "edenorte": file = "edenorte.png"; break; case "edesur": file = "edesur.png"; break;
+            case "edeeste": file = "edeeste.png"; break; case "cepm": file = "cepm.png"; break; case "ceb": file = "ceb.png"; break;
+            case "adn": file = "adn.png"; break; case "caasd": file = "caasd.png"; break; case "corasan": case "coraasan": file = "coraasan.jpg"; break;
+            case "coraplata": case "coraaplata": file = "coraaplata.png"; break; case "coaarom": file = "coaarom.png"; break;
+            case "dgii": file = "dgii.png"; break; case "midas": case "midas seguros": file = "midas.png"; break;
+            case "paso rapido": file = "paso-rapido.png"; break; case "activa": file = "activa.png"; break;
+            case "star sport": file = "star-sport.png"; break; case "juancito sport": file = "juancito-sport.png"; break;
+            default: if (suppliedImage.isEmpty()) return;
+        }
+        String suppliedFile = suppliedImage.substring(suppliedImage.lastIndexOf('/') + 1).replaceAll("[?#].*$", "");
+        final String imageUrl = !file.isEmpty()
+                ? "https://www.recargasdominicanas.do/images/" + file
+                : suppliedImage.startsWith("https://") ? suppliedImage : "https://www.recargasdominicanas.do/images/" + suppliedFile;
+        imageExecutor.execute(() -> {
+            try {
+                HttpURLConnection connection = (HttpURLConnection) new URL(imageUrl).openConnection();
+                connection.setConnectTimeout(10000); connection.setReadTimeout(10000);
+                try (InputStream stream = connection.getInputStream()) {
+                    Bitmap bitmap;
+                    if (imageUrl.toLowerCase(Locale.ROOT).endsWith(".svg")) {
+                        SVG svg = SVG.getFromInputStream(stream);
+                        bitmap = Bitmap.createBitmap(dp(52), dp(52), Bitmap.Config.ARGB_8888);
+                        Canvas canvas = new Canvas(bitmap);
+                        svg.setDocumentWidth(dp(52)); svg.setDocumentHeight(dp(52));
+                        svg.renderToCanvas(canvas);
+                    } else {
+                        bitmap = BitmapFactory.decodeStream(stream);
+                    }
+                    if (bitmap != null) runOnUiThread(() -> target.setImageBitmap(bitmap));
+                } finally { connection.disconnect(); }
+            } catch (Exception ignored) { }
+        });
+    }
+
+    private void executeServiceRecharge(Button button, JSONObject payload, String successTitle) {
+        button.setEnabled(false); String original = button.getText().toString(); button.setText("Procesando…");
+        executor.execute(() -> {
+            try {
+                JSONObject response = api.submitRecharge(payload);
+                JSONObject transaction = response.optJSONObject("transaction");
+                accountData = api.account();
+                runOnUiThread(() -> {
+                    String pin = transaction == null ? "" : transaction.optString("pin", transaction.optString("issuedPin", ""));
+                    String successMessage = "Referencia: " + (transaction == null ? "HispaniolaPay" : transaction.optString("providerId", transaction.optString("id")))
+                            + (pin.isEmpty() ? "" : "\n\nPIN: " + pin)
+                            + "\nLa operación aparece en tu historial.";
+                    AlertDialog.Builder completed = new AlertDialog.Builder(this).setTitle(successTitle)
+                            .setMessage(successMessage)
+                            .setPositiveButton("Entendido", (dialog, which) -> showRechargeServices());
+                    if (receiptEnabled() && transaction != null) completed.setNeutralButton("Recibo " + receiptPaperWidthMm() + " mm", (dialog, which) -> receiptManager.showActions(transaction, accountData));
+                    completed.show();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> { button.setEnabled(true); button.setText(original); errorDialog("No se completó la operación", friendly(error)); });
+            }
+        });
+    }
+
+    private JSONObject jsonPayload(Object... values) {
+        JSONObject payload = new JSONObject();
+        try {
+            for (int i = 0; i + 1 < values.length; i += 2) payload.put(String.valueOf(values[i]), values[i + 1]);
+        } catch (Exception error) {
+            throw new IllegalStateException("No se pudo preparar la operación", error);
+        }
+        return payload;
     }
 
     private void showDeposit() {
@@ -360,8 +850,9 @@ public final class MainActivity extends Activity {
 
     private void updateDepositPreview(TextView view, String raw, String currency, double dopPerUsd) {
         double value = parseAmount(raw);
-        double usdValue = "DOP".equals(currency) ? value / dopPerUsd : value;
-        double walletValue = "DOP".equals(walletCurrency()) ? usdValue * dopPerUsd : usdValue;
+        JSONObject rateInfo = rates();
+        double usdValue = "DOP".equals(currency) ? value / dopPerUsd : "HTG".equals(currency) ? value / rateInfo.optDouble("htgPerUsd", 132.2) : value;
+        double walletValue = fromUsd(usdValue, walletCurrency(), rateInfo);
         view.setText("Acreditación estimada: " + walletMoney(round(walletValue)) + " · Comisión: 0%");
     }
 
@@ -407,9 +898,9 @@ public final class MainActivity extends Activity {
         JSONObject account = account();
         JSONObject rates = rates();
         double balance = walletBalance(account);
-        boolean dopWallet = "DOP".equals(walletCurrency());
-        double dopRate = rates.optDouble("dopPerUsd", 58.5);
+        String sourceCurrency = walletCurrency();
         double rate = rates.optDouble("htgPerUsd", 132.2);
+        double dopToHtg = rates.optDouble("htgPerDop", 2.03);
         double feePct = rates.optDouble("remittanceFeePercent", 8);
         LinearLayout miniBalance = card();
         miniBalance.addView(text("Saldo disponible", 12, MUTED, Typeface.BOLD));
@@ -446,11 +937,14 @@ public final class MainActivity extends Activity {
         amount.addTextChangedListener(new SimpleWatcher() {
             @Override public void afterTextChanged(Editable editable) {
                 double value = parseAmount(editable.toString());
-                double valueUsd = dopWallet ? value / dopRate : value;
+                double valueUsd = toUsd(value, sourceCurrency, rates);
                 double fee = value * feePct / 100d;
                 double feeUsd = valueUsd * feePct / 100d;
-                quoteAmount.setText(String.format(Locale.US, "El destinatario recibe: %,.2f HTG", Math.max(0, valueUsd - feeUsd) * rate));
-                quoteFee.setText(String.format(Locale.US, "Tarifa %.1f%%: %s · Tasa: %,.2f HTG", feePct, walletMoney(fee), rate));
+                double receivesHtg = "DOP".equals(sourceCurrency) ? Math.max(0, value - fee) * dopToHtg : "HTG".equals(sourceCurrency) ? Math.max(0, value - fee) : Math.max(0, valueUsd - feeUsd) * rate;
+                quoteAmount.setText(String.format(Locale.US, "El destinatario recibe: %,.2f HTG", receivesHtg));
+                quoteFee.setText("DOP".equals(sourceCurrency)
+                        ? String.format(Locale.US, "Tarifa %.1f%%: %s · RD$1 = %.3f HTG", feePct, walletMoney(fee), dopToHtg)
+                        : String.format(Locale.US, "Tarifa %.1f%%: %s · 1 USD = %,.2f HTG", feePct, walletMoney(fee), rate));
             }
         });
 
@@ -467,13 +961,116 @@ public final class MainActivity extends Activity {
             if (recipient.length() < 3 || recipientPhone.length() != 8 || value < 1) { errorDialog("Revisa los datos", "Completa el nombre, un teléfono haitiano de 8 dígitos y un monto válido."); return; }
             if (value > balance) { errorDialog("Saldo insuficiente", "Disponible: " + walletMoney(balance)); return; }
             double fee = round(value * feePct / 100d);
-            double valueUsd = dopWallet ? value / dopRate : value;
-            double htg = round((valueUsd - (valueUsd * feePct / 100d)) * rate);
+            double valueUsd = toUsd(value, sourceCurrency, rates);
+            double htg = round("DOP".equals(sourceCurrency) ? (value - fee) * dopToHtg : "HTG".equals(sourceCurrency) ? value - fee : (valueUsd - (valueUsd * feePct / 100d)) * rate);
             String finalPhone = recipientPhone;
             new AlertDialog.Builder(this).setTitle("Confirmar remesa")
                     .setMessage(selected[0] + " · +509 " + finalPhone + "\n" + recipient + "\n\nDebitar: " + walletMoney(value) + "\nRecibe: " + String.format(Locale.US, "%,.2f HTG", htg) + "\nTarifa incluida: " + walletMoney(fee))
                     .setNegativeButton("Cancelar", null)
                     .setPositiveButton("Enviar ahora", (dialog, which) -> executeSend(send, selected[0], recipient, finalPhone, value)).show();
+        });
+    }
+
+    private void showTransfer() { showTransfer(""); }
+
+    private void showTransfer(String prefilledRecipient) {
+        activeScreen = "Transferir";
+        JSONObject current = account();
+        double balance = walletBalance(current);
+        renderShell("Transferir saldo", "Entre clientes y subagentes HispaniolaPay");
+        balanceCard(balance);
+        info("Transferencia inmediata", "Usa el código de cliente, código de subagente o correo registrado. Comisión: 0.30% del monto enviado.");
+        JSONObject rateInfo = rates();
+        info("Tasas transparentes", String.format(Locale.US,
+                "1 USD = RD$%,.4f · 1 USD = G%,.4f",
+                rateInfo.optDouble("dopPerUsd", 58.5), rateInfo.optDouble("htgPerUsd", 132.2)));
+        section("Destinatario y monto");
+        EditText recipient = input("Código o correo del destinatario", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        if (prefilledRecipient != null && !prefilledRecipient.isEmpty()) recipient.setText(prefilledRecipient.toUpperCase(Locale.ROOT));
+        EditText amount = input("Monto a transferir en " + walletCurrency(), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        content.addView(recipient, params(-1, dp(57), 0));
+        content.addView(amount, params(-1, dp(57), 10));
+        LinearLayout quote = card();
+        TextView feeView = text("Comisión 0.30%: " + walletMoney(0), 13, MUTED, Typeface.BOLD);
+        TextView debitView = text("Débito total: " + walletMoney(0), 17, INK, Typeface.BOLD);
+        quote.addView(debitView); quote.addView(feeView, params(-1, -2, 6));
+        content.addView(quote, params(-1, -2, 12));
+        amount.addTextChangedListener(new SimpleWatcher() { @Override public void afterTextChanged(Editable editable) {
+            double value = parseAmount(editable.toString());
+            double fee = round(value * 0.003d);
+            feeView.setText("Comisión 0.30%: " + walletMoney(fee));
+            debitView.setText("Débito total: " + walletMoney(round(value + fee)));
+        }});
+        Button submit = primaryButton("Revisar transferencia");
+        submit.setOnClickListener(v -> {
+            String destination = recipient.getText().toString().trim();
+            double value = round(parseAmount(amount.getText().toString()));
+            double fee = round(value * 0.003d);
+            double total = round(value + fee);
+            if (destination.length() < 3 || value <= 0) { errorDialog("Revisa los datos", "Escribe un código o correo registrado y un monto válido."); return; }
+            if (total > balance) {
+                String cause = "Necesitas " + walletMoney(total) + " y tienes " + walletMoney(balance) + ". La transferencia no fue realizada.";
+                HispaniolaMessagingService.notify(this, "Transferencia no realizada", cause);
+                errorDialog("Saldo insuficiente", cause);
+                return;
+            }
+            reviewTransfer(submit, destination, value);
+        });
+        content.addView(submit, params(-1, dp(56), 14));
+    }
+
+    private void reviewTransfer(Button button, String recipient, double amount) {
+        button.setEnabled(false); button.setText("Consultando tasa y destinatario…");
+        executor.execute(() -> {
+            try {
+                JSONObject response = api.quoteBalanceTransfer(new JSONObject().put("recipient", recipient).put("amount", amount));
+                JSONObject quote = response.optJSONObject("quote");
+                if (quote == null) throw new Exception("No se recibió la cotización de la transferencia");
+                String source = quote.optString("sourceCurrency", walletCurrency());
+                String destination = quote.optString("destinationCurrency", source);
+                String message = "Destinatario: " + quote.optString("recipientName", recipient)
+                        + "\nMonto: " + currencyMoney(amount, source)
+                        + "\nComisión 0.30%: " + currencyMoney(quote.optDouble("feeAmount"), source)
+                        + "\nDébito total: " + currencyMoney(quote.optDouble("totalDebit"), source)
+                        + "\n\nTasa aplicada: " + quote.optString("rateText")
+                        + "\nEl destinatario recibe: " + currencyMoney(quote.optDouble("creditedAmount"), destination);
+                runOnUiThread(() -> {
+                    button.setEnabled(true); button.setText("Revisar transferencia");
+                    if (!quote.optBoolean("sufficientBalance", false)) {
+                        String cause = "Saldo insuficiente. Necesitas " + currencyMoney(quote.optDouble("totalDebit"), source)
+                                + " y tienes " + currencyMoney(quote.optDouble("availableBalance"), source) + ".";
+                        HispaniolaMessagingService.notify(this, "Transferencia no realizada", cause);
+                        errorDialog("Saldo insuficiente", cause);
+                        return;
+                    }
+                    new AlertDialog.Builder(this).setTitle("Confirmar transferencia")
+                            .setMessage(message).setNegativeButton("Cancelar", null)
+                            .setPositiveButton("Transferir ahora", (dialog, which) -> executeTransfer(button, recipient, amount)).show();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> { button.setEnabled(true); button.setText("Revisar transferencia"); errorDialog("No se pudo cotizar", friendly(error)); });
+            }
+        });
+    }
+
+    private void executeTransfer(Button button, String recipient, double amount) {
+        button.setEnabled(false); button.setText("Transfiriendo de forma segura…");
+        executor.execute(() -> {
+            try {
+                JSONObject response = api.transferBalance(new JSONObject().put("recipient", recipient).put("amount", amount).put("idempotencyKey", UUID.randomUUID().toString()));
+                JSONObject transfer = response.optJSONObject("transfer");
+                accountData = api.account();
+                runOnUiThread(() -> {
+                    AlertDialog.Builder completedDialog = new AlertDialog.Builder(this).setTitle("Transferencia completada")
+                            .setMessage("Destinatario: " + (transfer == null ? recipient : transfer.optString("recipientName", recipient)) + "\nMonto acreditado: " + (transfer == null ? "" : currencyMoney(transfer.optDouble("creditedAmount"), transfer.optString("destinationCurrency"))) + "\nTasa aplicada: " + (transfer == null ? "" : transfer.optString("rateText")) + "\nComisión: 0.30%\nReferencia: " + (transfer == null ? "" : transfer.optString("id")))
+                            .setCancelable(false).setPositiveButton("Ver saldo actualizado", (dialog, which) -> showHome());
+                    if (receiptEnabled() && transfer != null) completedDialog.setNeutralButton("Recibo " + receiptPaperWidthMm() + " mm", (dialog, which) -> receiptManager.showActions(transfer, accountData));
+                    completedDialog.show();
+                });
+            } catch (Exception error) {
+                try { accountData = api.account(); } catch (Exception ignored) { }
+                runOnUiThread(() -> { showTransfer(); errorDialog("No se completó la transferencia", friendly(error)); });
+            }
         });
     }
 
@@ -492,9 +1089,11 @@ public final class MainActivity extends Activity {
                     String txId = remittance == null ? "" : remittance.optString("txId");
                     String reference = remittance == null ? "" : remittance.optString("id");
                     String status = remittance == null ? "procesando" : remittance.optString("status", "procesando");
-                    new AlertDialog.Builder(this).setTitle("¡Remesa recibida!")
+                    AlertDialog.Builder completedDialog = new AlertDialog.Builder(this).setTitle("¡Remesa recibida!")
                             .setMessage("Estado: " + status.toUpperCase(Locale.ROOT) + "\nReferencia: " + (txId.isEmpty() ? reference : txId) + "\n\nPuedes consultar esta operación en Historial.")
-                            .setCancelable(false).setPositiveButton("Ver saldo actualizado", (d, w) -> showHome()).show();
+                            .setCancelable(false).setPositiveButton("Ver saldo actualizado", (d, w) -> showHome());
+                    if (receiptEnabled() && remittance != null) completedDialog.setNeutralButton("Recibo " + receiptPaperWidthMm() + " mm", (dialog, which) -> receiptManager.showActions(remittance, accountData));
+                    completedDialog.show();
                 });
             } catch (Exception error) {
                 try { accountData = api.account(); } catch (Exception ignored) { }
@@ -503,7 +1102,24 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void showHistory() { activeScreen = "Historial"; renderShell("Historial", "Tus remesas y referencias recientes"); addRecent(50); }
+    private void showHistory() {
+        activeScreen = "Historial";
+        renderShell("Historial", "Tus remesas y referencias recientes");
+        if (receiptEnabled()) info("Facturas habilitadas", "Pulsa Factura PDF · Imprimir en cualquier movimiento para compartir el comprobante por WhatsApp o imprimirlo por Bluetooth.");
+        addRecent(50);
+    }
+
+    private void openHistory() {
+        showLoading("Actualizando historial y permisos…");
+        executor.execute(() -> {
+            try {
+                accountData = api.account();
+                runOnUiThread(this::showHistory);
+            } catch (Exception error) {
+                runOnUiThread(() -> { showWallet(); errorDialog("No se pudo abrir el historial", friendly(error)); });
+            }
+        });
+    }
 
     private void showNotifications() {
         activeScreen = "Avisos";
@@ -565,6 +1181,46 @@ public final class MainActivity extends Activity {
         panel.addView(text("Moneda principal: " + walletCurrency(), 13, MUTED, Typeface.BOLD), params(-1, -2, 6));
         if (account.optDouble("benefitRatePercent", 0) > 0) panel.addView(text(String.format(Locale.US, "Beneficio acumulado: RD$ %,.2f (%.2f%%)", account.optDouble("benefitAccruedDOP", 0), account.optDouble("benefitRatePercent", 0)), 13, AMBER, Typeface.BOLD), params(-1, -2, 6));
         content.addView(panel);
+
+        if (receiptEnabled()) {
+            section("Facturación opcional");
+            LinearLayout printerCard = card();
+            printerCard.addView(text("Impresora térmica · " + receiptPaperWidthMm() + " mm", 17, INK, Typeface.BOLD));
+            printerCard.addView(text(receiptManager.configuredPrinterName(), 12, BLUE, Typeface.BOLD), params(-1, -2, 7));
+            printerCard.addView(text("Imprime comprobantes por Bluetooth o compártelos en PDF por WhatsApp.", 12, MUTED, Typeface.NORMAL), params(-1, -2, 7));
+            printerCard.addView(text("Aplicación " + BuildConfig.VERSION_NAME, 11, MUTED, Typeface.NORMAL), params(-1, -2, 5));
+            Button configurePrinter = secondaryButton("Configurar impresora Bluetooth");
+            configurePrinter.setOnClickListener(v -> receiptManager.configurePrinter());
+            printerCard.addView(configurePrinter, params(-1, dp(52), 12));
+            content.addView(printerCard);
+        }
+
+        String clientCode = account.optString("clientCode", "").trim().toUpperCase(Locale.ROOT);
+        if (!clientCode.isEmpty()) {
+            String paymentLink = "https://hispaniolapay.com/pagar?to=" + Uri.encode(clientCode);
+            section("Cobrar con HispaniolaPay");
+            LinearLayout receiveCard = card();
+            TextView qrTitle = text("Escanea para pagarme", 18, INK, Typeface.BOLD); qrTitle.setGravity(Gravity.CENTER);
+            receiveCard.addView(qrTitle);
+            ImageView qr = new ImageView(this); qr.setImageBitmap(paymentQr(paymentLink, 620)); qr.setContentDescription(tr("Escanea para pagarme"));
+            receiveCard.addView(qr, params(-1, dp(245), 12));
+            TextView code = text(clientCode, 24, BLUE, Typeface.BOLD); code.setGravity(Gravity.CENTER); code.setTextIsSelectable(true);
+            receiveCard.addView(code, params(-1, -2, 10));
+            TextView link = text(paymentLink, 11, MUTED, Typeface.NORMAL); link.setGravity(Gravity.CENTER); link.setTextIsSelectable(true);
+            receiveCard.addView(link, params(-1, -2, 6));
+            receiveCard.addView(text("Comparte tu QR, enlace o código para recibir saldo de otro usuario HispaniolaPay.", 12, MUTED, Typeface.NORMAL), params(-1, -2, 10));
+            LinearLayout copyRow = new LinearLayout(this); copyRow.setOrientation(LinearLayout.HORIZONTAL);
+            Button copyCode = secondaryButton("Copiar código");
+            Button copyLink = secondaryButton("Copiar enlace");
+            copyCode.setOnClickListener(v -> { copyText("HispaniolaPay", clientCode); toast("Código copiado"); });
+            copyLink.setOnClickListener(v -> { copyText("HispaniolaPay", paymentLink); toast("Enlace copiado"); });
+            copyRow.addView(copyCode, new LinearLayout.LayoutParams(0, dp(50), 1)); copyRow.addView(space(dp(8), 1)); copyRow.addView(copyLink, new LinearLayout.LayoutParams(0, dp(50), 1));
+            receiveCard.addView(copyRow, params(-1, dp(50), 14));
+            Button share = primaryButton("Compartir");
+            share.setOnClickListener(v -> sharePaymentLink(clientCode, paymentLink));
+            receiveCard.addView(share, params(-1, dp(52), 10));
+            content.addView(receiveCard);
+        }
         section("Editar información");
         EditText name = input("Nombre completo", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         name.setText(account.optString("name", ""));
@@ -579,13 +1235,17 @@ public final class MainActivity extends Activity {
             save.setEnabled(false); save.setText("Guardando…");
             executor.execute(() -> {
                 try {
-                    api.updateProfile(new JSONObject().put("name", name.getText().toString().trim()).put("phone", phone.getText().toString().trim()).put("idNumber", idNumber.getText().toString().trim()).put("country", account.optString("country", "DO")));
+                    api.updateProfile(new JSONObject().put("name", name.getText().toString().trim()).put("phone", phone.getText().toString().trim()).put("idNumber", idNumber.getText().toString().trim()).put("country", account.optString("country", "DO")).put("language", language));
                     accountData = api.account();
                     runOnUiThread(() -> { toast("Perfil actualizado correctamente."); showProfile(); });
                 } catch (Exception error) { runOnUiThread(() -> { save.setEnabled(true); save.setText("Guardar perfil"); errorDialog("No se pudo guardar", friendly(error)); }); }
             });
         });
         content.addView(save, params(-1, dp(54), 14));
+        section("Idioma");
+        Button languageButton = secondaryButton(("en".equals(language) ? "English" : "ht".equals(language) ? "Kreyòl ayisyen" : "Español") + "  ▾");
+        languageButton.setOnClickListener(v -> chooseLanguage());
+        content.addView(languageButton, params(-1, dp(54), 0));
         section("Apariencia");
         LinearLayout appearance = new LinearLayout(this);
         appearance.setOrientation(LinearLayout.HORIZONTAL);
@@ -627,6 +1287,7 @@ public final class MainActivity extends Activity {
         LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(7), dp(5), dp(7), dp(5)); nav.setBackgroundColor(SURFACE);
         nav.addView(navButton("⌂", "Inicio", this::showHome), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("▣", "Billetera", this::showWallet), new LinearLayout.LayoutParams(0, -1, 1));
+        nav.addView(navButton("⚡", "Servicios", this::showRechargeServices), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("+", "Depositar", this::showDeposit), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("↗", "Enviar", this::showSend), new LinearLayout.LayoutParams(0, -1, 1));
         nav.addView(navButton("●", "Perfil", this::showProfile), new LinearLayout.LayoutParams(0, -1, 1)); return nav;
@@ -662,29 +1323,34 @@ public final class MainActivity extends Activity {
     private void balanceCard(double balance) {
         LinearLayout box = column(); box.setPadding(dp(20), dp(19), dp(20), dp(19)); box.setBackground(roundGradient(BLUE, CYAN, 22));
         LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text("SALDO DISPONIBLE", 12, Color.rgb(220, 240, 255), Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1)); top.addView(text(walletCurrency(), 12, Color.WHITE, Typeface.BOLD)); box.addView(top);
-        box.addView(text(walletMoney(balance), 34, Color.WHITE, Typeface.BOLD), params(-1, -2, 8)); box.addView(text("● Sincronizado ahora  ·  Disponible para remesas", 12, Color.rgb(226, 242, 255), Typeface.NORMAL), params(-1, -2, 5)); content.addView(box);
+        box.addView(text(walletMoney(balance), 34, Color.WHITE, Typeface.BOLD), params(-1, -2, 8)); box.addView(text("● Sincronizado ahora  ·  Disponible para todos los servicios", 12, Color.rgb(226, 242, 255), Typeface.NORMAL), params(-1, -2, 5)); content.addView(box);
         box.setAlpha(0f); box.setTranslationY(dp(18)); box.animate().alpha(1f).translationY(0f).setDuration(420).start();
     }
 
     private void addRecent(int limit) {
-        JSONArray list = accountData == null ? null : accountData.optJSONArray("remittances");
+        JSONArray list = accountData == null ? null : accountData.optJSONArray("movements");
         if (list == null || list.length() == 0) {
             LinearLayout empty = card(); TextView icon = text("↗", 25, BLUE, Typeface.BOLD); icon.setGravity(Gravity.CENTER); empty.addView(icon);
-            TextView title = text("Todavía no tienes remesas", 16, INK, Typeface.BOLD); title.setGravity(Gravity.CENTER); empty.addView(title, params(-1, -2, 8));
-            TextView detail = text("Tu actividad aparecerá aquí después del primer envío.", 13, MUTED, Typeface.NORMAL); detail.setGravity(Gravity.CENTER); empty.addView(detail, params(-1, -2, 5)); content.addView(empty); return;
+            TextView title = text("Todavía no tienes movimientos", 16, INK, Typeface.BOLD); title.setGravity(Gravity.CENTER); empty.addView(title, params(-1, -2, 8));
+            TextView detail = text("Tus depósitos, transferencias y remesas aparecerán aquí.", 13, MUTED, Typeface.NORMAL); detail.setGravity(Gravity.CENTER); empty.addView(detail, params(-1, -2, 5)); content.addView(empty); return;
         }
         for (int i = 0; i < Math.min(limit, list.length()); i++) {
             JSONObject tx = list.optJSONObject(i); if (tx == null) continue;
+            boolean incoming = "in".equals(tx.optString("direction"));
             LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(15), dp(14), dp(15), dp(14)); row.setBackground(round(SURFACE, 18, LINE, 1));
-            TextView badge = text(tx.optString("operator", "N").startsWith("Mon") ? "M" : "N", 16, Color.WHITE, Typeface.BOLD); badge.setGravity(Gravity.CENTER); badge.setBackground(round(tx.optString("operator").startsWith("Mon") ? RED : BLUE, 13, Color.TRANSPARENT, 0)); row.addView(badge, new LinearLayout.LayoutParams(dp(42), dp(42)));
-            LinearLayout labels = column(); labels.setPadding(dp(12), 0, dp(8), 0); labels.addView(text(tx.optString("recipientName", "Destinatario"), 14, INK, Typeface.BOLD)); labels.addView(text(tx.optString("operator") + " · " + tx.optString("recipientPhone"), 11, MUTED, Typeface.NORMAL), params(-1, -2, 3)); labels.addView(text(statusLabel(tx.optString("status")), 11, statusColor(tx.optString("status")), Typeface.BOLD), params(-1, -2, 4)); row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-            LinearLayout totals = column(); totals.setGravity(Gravity.RIGHT); totals.addView(text("-" + movementMoney(tx), 14, INK, Typeface.BOLD)); totals.addView(text(String.format(Locale.US, "%,.0f HTG", tx.optDouble("amountHTG", 0)), 11, MUTED, Typeface.NORMAL), params(-2, -2, 3)); row.addView(totals); JSONObject selectedTx = tx; row.setOnClickListener(v -> receipt(selectedTx)); content.addView(row, params(-1, -2, i == 0 ? 0 : 9));
+            TextView badge = text(incoming ? "+" : "↗", 16, Color.WHITE, Typeface.BOLD); badge.setGravity(Gravity.CENTER); badge.setBackground(round(incoming ? GREEN : BLUE, 13, Color.TRANSPARENT, 0)); row.addView(badge, new LinearLayout.LayoutParams(dp(42), dp(42)));
+            LinearLayout labels = column(); labels.setPadding(dp(12), 0, dp(8), 0); labels.addView(text(tx.optString("title", "Movimiento"), 14, INK, Typeface.BOLD)); labels.addView(text(tx.optString("description", "Operación procesada"), 11, MUTED, Typeface.NORMAL), params(-1, -2, 3)); labels.addView(text(statusLabel(tx.optString("status")), 11, statusColor(tx.optString("status")), Typeface.BOLD), params(-1, -2, 4)); row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+            LinearLayout totals = column(); totals.setGravity(Gravity.RIGHT); totals.addView(text((incoming ? "+" : "-") + movementMoney(tx), 14, incoming ? GREEN : INK, Typeface.BOLD)); totals.addView(text(tx.optString("currency", walletCurrency()), 11, MUTED, Typeface.NORMAL), params(-2, -2, 3));
+            totals.addView(text(receiptEnabled() ? "DETALLES · PDF · IMPRIMIR" : "VER DETALLES", 9, BLUE, Typeface.BOLD), params(-2, -2, 7));
+            row.addView(totals);
+            row.setContentDescription("Ver detalles de " + tx.optString("title", "movimiento"));
+            row.setOnClickListener(v -> receipt(tx));
+            content.addView(row, params(-1, -2, i == 0 ? 0 : 9));
         }
     }
 
     private void receipt(JSONObject tx) {
-        String reference = tx.optString("txId"); if (reference.isEmpty()) reference = tx.optString("id");
-        new AlertDialog.Builder(this).setTitle("Detalle de remesa").setMessage(tx.optString("operator") + "\n" + tx.optString("recipientName") + " · " + tx.optString("recipientPhone") + "\n\nMonto: " + movementMoney(tx) + "\nEntrega: " + String.format(Locale.US, "%,.2f HTG", tx.optDouble("amountHTG", 0)) + "\nEstado: " + statusLabel(tx.optString("status")) + "\nReferencia: " + reference).setPositiveButton("Cerrar", null).show();
+        receiptManager.showDetails(tx, accountData, receiptEnabled());
     }
 
     private View actionTile(String icon, String title, String detail, int color, View.OnClickListener listener) {
@@ -693,12 +1359,12 @@ public final class MainActivity extends Activity {
         tile.addView(iconView, new LinearLayout.LayoutParams(dp(48), dp(48))); tile.addView(text(title, 15, INK, Typeface.BOLD), params(-2, -2, 7)); TextView d = text(detail, 11, MUTED, Typeface.NORMAL); d.setGravity(Gravity.CENTER); tile.addView(d, params(-1, -2, 4)); tile.setOnClickListener(listener); return tile;
     }
 
-    private void section(String label) { content.addView(text(label.toUpperCase(Locale.ROOT), 12, MUTED, Typeface.BOLD), params(-1, -2, 20)); }
+    private void section(String label) { content.addView(text(tr(label).toUpperCase(Locale.ROOT), 12, MUTED, Typeface.BOLD), params(-1, -2, 20)); }
     private void info(String title, String detail) { LinearLayout panel = card(); panel.setBackground(round(SURFACE_ALT, 18, darkMode ? Color.rgb(52, 79, 113) : Color.rgb(203, 224, 250), 1)); panel.addView(text(title, 14, darkMode ? Color.rgb(130, 190, 255) : NAVY, Typeface.BOLD)); panel.addView(text(detail, 12, MUTED, Typeface.NORMAL), params(-1, -2, 5)); content.addView(panel, params(-1, -2, 14)); }
     private LinearLayout card() { LinearLayout panel = column(); panel.setPadding(dp(17), dp(16), dp(17), dp(16)); panel.setBackground(round(SURFACE, 20, LINE, 1)); return panel; }
-    private EditText input(String hint, int type) { EditText field = new EditText(this); field.setHint(hint); field.setTextSize(15); field.setTextColor(INK); field.setHintTextColor(MUTED); field.setSingleLine(true); field.setInputType(type); field.setPadding(dp(15), 0, dp(15), 0); field.setBackground(round(SURFACE, 16, LINE, 1)); return field; }
-    private Button primaryButton(String label) { Button button = new Button(this); button.setText(label); button.setTextSize(15); button.setTextColor(Color.WHITE); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setBackground(round(BLUE, 14, Color.TRANSPARENT, 0)); return button; }
-    private Button secondaryButton(String label) { Button button = new Button(this); button.setText(label); button.setTextSize(14); button.setTextColor(darkMode ? Color.rgb(122, 184, 255) : BLUE); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setBackground(round(SURFACE, 14, LINE, 1)); return button; }
+    private EditText input(String hint, int type) { EditText field = new EditText(this); field.setHint(tr(hint)); field.setTextSize(15); field.setTextColor(INK); field.setHintTextColor(MUTED); field.setSingleLine(true); field.setInputType(type); field.setPadding(dp(15), 0, dp(15), 0); field.setBackground(round(SURFACE, 16, LINE, 1)); return field; }
+    private Button primaryButton(String label) { Button button = new Button(this); button.setText(tr(label)); button.setTextSize(15); button.setTextColor(Color.WHITE); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setBackground(round(BLUE, 14, Color.TRANSPARENT, 0)); return button; }
+    private Button secondaryButton(String label) { Button button = new Button(this); button.setText(tr(label)); button.setTextSize(14); button.setTextColor(darkMode ? Color.rgb(122, 184, 255) : BLUE); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); button.setBackground(round(SURFACE, 14, LINE, 1)); return button; }
     private Button operatorButton(String label, boolean selected) { Button button = new Button(this); button.setText(label); button.setTextSize(14); button.setAllCaps(false); button.setTypeface(Typeface.DEFAULT, Typeface.BOLD); styleOperator(button, selected); return button; }
     private void styleOperator(Button button, boolean selected) { button.setTextColor(selected ? Color.WHITE : (darkMode ? Color.rgb(122, 184, 255) : BLUE)); button.setBackground(round(selected ? BLUE : SURFACE, 14, selected ? BLUE : LINE, 1)); }
 
@@ -727,23 +1393,119 @@ public final class MainActivity extends Activity {
     }
     private JSONObject account() { JSONObject value = accountData == null ? null : accountData.optJSONObject("account"); return value == null ? new JSONObject() : value; }
     private JSONObject rates() { JSONObject value = accountData == null ? null : accountData.optJSONObject("rates"); return value == null ? new JSONObject() : value; }
-    private String friendly(Exception error) { String message = error.getMessage(); if (message == null || message.trim().isEmpty()) return "Ocurrió un error inesperado. Intenta nuevamente."; if (message.contains("Unable to resolve host")) return "Sin conexión a internet."; if (message.toLowerCase(Locale.ROOT).contains("timeout")) return "La operación tardó demasiado. No la repitas; revisa el historial."; return message; }
-    private void errorDialog(String title, String message) { new AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("Entendido", null).show(); }
-    private String statusLabel(String status) { if ("completed".equals(status)) return "COMPLETADA"; if ("failed".equals(status)) return "RECHAZADA"; if ("review".equals(status)) return "EN REVISIÓN"; if ("processing".equals(status)) return "PROCESANDO"; return "PENDIENTE"; }
+    private boolean receiptEnabled() {
+        JSONObject account = account();
+        JSONObject subAgent = accountData == null ? null : accountData.optJSONObject("subAgent");
+        return account.optBoolean("receiptPrintingEnabled", false)
+                || (subAgent != null && subAgent.optBoolean("receiptPrintingEnabled", false));
+    }
+    private int receiptPaperWidthMm() {
+        JSONObject account = account();
+        JSONObject subAgent = accountData == null ? null : accountData.optJSONObject("subAgent");
+        int value = account.optInt("receiptPaperWidthMm", 58);
+        if (value != 78 && subAgent != null) value = subAgent.optInt("receiptPaperWidthMm", 58);
+        return value == 78 ? 78 : 58;
+    }
+    private boolean isInvoiceProduct(JSONObject product) {
+        String category = normalizeProductName(product.optString("category"));
+        String type = normalizeProductName(product.optString("type"));
+        String name = normalizeProductName(product.optString("name"));
+        if ("invoice".equals(category) || "factura".equals(type)) return true;
+        if ("mobile-topup".equals(category) || "data-plan".equals(category) || "recarga".equals(type) || "paquetico".equals(type)) return false;
+        String[] providers = {"edenorte", "corasan", "coraasan", "claro", "altice", "viva", "edeeste", "edesur", "wind", "caasd", "cepm", "ceb", "adn", "coraplata", "coraaplata", "coraavega", "coaarom", "dgii", "pgr multas", "tss", "midas seguros", "midas"};
+        for (String provider : providers) if (name.equals(provider) || name.contains(provider)) return true;
+        return false;
+    }
+    private String normalizeProductName(String value) {
+        return java.text.Normalizer.normalize(value == null ? "" : value.trim().toLowerCase(Locale.ROOT), java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+    }
+    private String friendly(Exception error) {
+        String message = error.getMessage();
+        if (message == null || message.trim().isEmpty()) return "Ocurrió un inconveniente inesperado. Intenta nuevamente.";
+        String lower = message.toLowerCase(Locale.ROOT);
+        if (lower.contains("unable to resolve host") || lower.contains("no pudimos establecer una conexión") || lower.contains("ssl") || lower.contains("handshake") || lower.contains("protocol error") || lower.contains("failed to connect")) return "No pudimos conectar de forma segura. Verifica tu internet e intenta nuevamente.";
+        if (lower.contains("timeout") || lower.contains("timed out")) return "La operación tardó demasiado. Revisa tu conexión e intenta nuevamente.";
+        if (lower.contains("doctype") || lower.contains("respuesta no válida")) return "El servicio está actualizándose. Espera unos segundos e intenta nuevamente.";
+        return message;
+    }
+
+    private void errorDialog(String title, String message) {
+        Dialog dialog = new Dialog(this);
+        LinearLayout card = column();
+        card.setPadding(dp(24), dp(22), dp(24), dp(20));
+        card.setBackground(round(SURFACE, 26, LINE, 1));
+
+        LinearLayout heading = new LinearLayout(this);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView icon = text("!", 20, Color.WHITE, Typeface.BOLD);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(round(RED, 15, Color.TRANSPARENT, 0));
+        heading.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        LinearLayout labels = column();
+        labels.setPadding(dp(13), 0, 0, 0);
+        labels.addView(text(title, 19, INK, Typeface.BOLD));
+        labels.addView(text("HispaniolaPay", 11, MUTED, Typeface.BOLD), params(-1, -2, 3));
+        heading.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+        card.addView(heading);
+
+        TextView detail = text(message, 14, MUTED, Typeface.NORMAL);
+        detail.setLineSpacing(dp(3), 1f);
+        card.addView(detail, params(-1, -2, 18));
+
+        Button close = primaryButton("Entendido");
+        close.setOnClickListener(v -> dialog.dismiss());
+        card.addView(close, params(-1, dp(52), 4));
+        dialog.setContentView(card);
+        dialog.setCancelable(true);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            android.view.WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.dimAmount = 0.62f;
+            window.setAttributes(attributes);
+        }
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(getResources().getDisplayMetrics().widthPixels - dp(40), android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+    private String statusLabel(String status) { if ("completed".equals(status)) return tr("COMPLETADA"); if ("failed".equals(status)) return tr("RECHAZADA"); if ("review".equals(status)) return tr("EN REVISIÓN"); if ("processing".equals(status)) return tr("PROCESANDO"); return tr("PENDIENTE"); }
     private int statusColor(String status) { if ("completed".equals(status)) return GREEN; if ("failed".equals(status)) return RED; if ("review".equals(status)) return AMBER; return BLUE; }
     private double parseAmount(String value) { try { return Double.parseDouble(value.trim()); } catch (Exception ignored) { return 0; } }
     private double round(double value) { return Math.round(value * 100d) / 100d; }
     private String money(double value) { return usd.format(value); }
-    private String walletCurrency() { return "DOP".equals(account().optString("primaryCurrency")) ? "DOP" : "USD"; }
+    private String walletCurrency() { String value = account().optString("primaryCurrency", "USD"); return "DOP".equals(value) || "HTG".equals(value) ? value : "USD"; }
     private double walletBalance(JSONObject account) { return account.has("walletBalance") ? account.optDouble("walletBalance", 0) : account.optDouble("walletBalanceUSD", 0); }
     private double walletSavings(JSONObject account) { return account.has("savingsBalance") ? account.optDouble("savingsBalance", 0) : account.optDouble("savingsBalanceUSD", 0); }
-    private String walletMoney(double value) { return ("DOP".equals(walletCurrency()) ? "RD$" : "US$") + String.format(Locale.US, "%,.2f", value); }
-    private String movementMoney(JSONObject item) { String currency = item.optString("sourceCurrency", item.optString("currency", "USD")); double value = item.has("amount") ? item.optDouble("amount", 0) : item.optDouble("amountUSD", 0); return ("DOP".equals(currency) ? "RD$" : "US$") + String.format(Locale.US, "%,.2f", value) + " " + currency; }
+    private String currencyMoney(double value, String currency) { String symbol = "DOP".equals(currency) ? "RD$" : "HTG".equals(currency) ? "G" : "US$"; return symbol + String.format(Locale.US, "%,.2f", value) + " " + currency; }
+    private String walletMoney(double value) { return currencyMoney(value, walletCurrency()).replace(" " + walletCurrency(), ""); }
+    private String movementMoney(JSONObject item) { String currency = item.optString("sourceCurrency", item.optString("currency", "USD")); double value = item.has("amount") ? item.optDouble("amount", 0) : item.optDouble("amountUSD", 0); return currencyMoney(value, currency); }
+    private double toUsd(double amount, String currency, JSONObject rateInfo) { if ("DOP".equals(currency)) return amount / rateInfo.optDouble("dopPerUsd", 58.5); if ("HTG".equals(currency)) return amount / rateInfo.optDouble("htgPerUsd", 132.2); return amount; }
+    private double fromUsd(double amount, String currency, JSONObject rateInfo) { if ("DOP".equals(currency)) return amount * rateInfo.optDouble("dopPerUsd", 58.5); if ("HTG".equals(currency)) return amount * rateInfo.optDouble("htgPerUsd", 132.2); return amount; }
     private String firstName(String name) { String trimmed = name.trim(); int split = trimmed.indexOf(' '); return split > 0 ? trimmed.substring(0, split) : trimmed; }
-    private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); }
+    private Bitmap paymentQr(String value, int pixels) {
+        try {
+            BitMatrix matrix = new MultiFormatWriter().encode(value, BarcodeFormat.QR_CODE, pixels, pixels);
+            Bitmap bitmap = Bitmap.createBitmap(pixels, pixels, Bitmap.Config.RGB_565);
+            for (int y = 0; y < pixels; y++) for (int x = 0; x < pixels; x++) bitmap.setPixel(x, y, matrix.get(x, y) ? NAVY : Color.WHITE);
+            return bitmap;
+        } catch (Exception error) {
+            return Bitmap.createBitmap(2, 2, Bitmap.Config.RGB_565);
+        }
+    }
+    private void copyText(String label, String value) { ((ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText(label, value)); }
+    private void sharePaymentLink(String code, String link) {
+        Intent share = new Intent(Intent.ACTION_SEND); share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_SUBJECT, "HispaniolaPay · " + code);
+        share.putExtra(Intent.EXTRA_TEXT, tr("Puedes enviarme saldo en HispaniolaPay usando mi código") + " " + code + ":\n" + link);
+        startActivity(Intent.createChooser(share, tr("Compartir")));
+    }
+    private String tr(String value) { return Translations.get(language, value); }
+    private void toast(String message) { Toast.makeText(this, tr(message), Toast.LENGTH_LONG).show(); }
     private LinearLayout column() { LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); return layout; }
     private View space(int width, int height) { View view = new View(this); view.setLayoutParams(new LinearLayout.LayoutParams(width, height)); return view; }
-    private TextView text(String value, float size, int color, int style) { TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setTextColor(color); view.setTypeface(Typeface.DEFAULT, style); return view; }
+    private TextView text(String value, float size, int color, int style) { TextView view = new TextView(this); view.setText(tr(value)); view.setTextSize(size); view.setTextColor(color); view.setTypeface(Typeface.DEFAULT, style); return view; }
     private ImageView brandImage() { ImageView image = new ImageView(this); image.setImageResource(R.drawable.hispaniolapay_mark); image.setScaleType(ImageView.ScaleType.FIT_CENTER); image.setPadding(dp(5), dp(5), dp(5), dp(5)); image.setBackground(round(SURFACE, 22, LINE, 1)); image.setContentDescription("Logo oficial de HispaniolaPay"); return image; }
     private LinearLayout.LayoutParams params(int width, int height, int top) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(width, height); p.topMargin = dp(top); return p; }
     private GradientDrawable round(int color, int radius, int stroke, int strokeWidth) { GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(radius)); if (strokeWidth > 0) d.setStroke(dp(strokeWidth), stroke); return d; }

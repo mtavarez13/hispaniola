@@ -8,6 +8,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -69,6 +70,37 @@ final class ApiClient {
 
     JSONObject sendRemittance(JSONObject payload) throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances", "POST", payload, 65000);
+    }
+
+    JSONObject transferBalance(JSONObject payload) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/transfers", "POST", payload, 30000);
+    }
+
+    JSONObject quoteBalanceTransfer(JSONObject payload) throws Exception {
+        payload.put("quoteOnly", true);
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/transfers", "POST", payload, 30000);
+    }
+
+    JSONObject redeemBenefits() throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/benefits/redeem", "POST", new JSONObject(), 30000);
+    }
+
+    JSONObject rechargeProducts() throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/recharges?action=products", "GET", null, 30000);
+    }
+
+    JSONObject lookupServiceInvoice(int productId, String nic) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/recharges?action=invoice&productId=" + productId
+                + "&nic=" + URLEncoder.encode(nic, "UTF-8"), "GET", null, 35000);
+    }
+
+    JSONObject lookupDataPlans(int productId, String phone) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/recharges?action=data_plans&productId=" + productId
+                + "&phone=" + URLEncoder.encode(phone, "UTF-8"), "GET", null, 35000);
+    }
+
+    JSONObject submitRecharge(JSONObject payload) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/recharges", "POST", payload, 65000);
     }
 
     JSONObject deposits() throws Exception {
@@ -150,6 +182,21 @@ final class ApiClient {
     }
 
     private JSONObject request(String target, String method, JSONObject payload, String token, int timeout) throws Exception {
+        IOException lastNetworkError = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                return requestOnce(target, method, payload, token, timeout);
+            } catch (ApiException error) {
+                throw error;
+            } catch (IOException error) {
+                lastNetworkError = error;
+                if (attempt < 2) Thread.sleep(500L * (attempt + 1));
+            }
+        }
+        throw new ApiException(0, "No pudimos establecer una conexión segura. Revisa tu internet e intenta nuevamente.");
+    }
+
+    private JSONObject requestOnce(String target, String method, JSONObject payload, String token, int timeout) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(target).openConnection();
         connection.setRequestMethod(method);
         connection.setConnectTimeout(18000);
@@ -182,7 +229,14 @@ final class ApiClient {
             String line;
             while ((line = reader.readLine()) != null) body.append(line);
         }
-        return body.length() == 0 ? new JSONObject() : new JSONObject(body.toString());
+        if (body.length() == 0) return new JSONObject();
+        String raw = body.toString().trim();
+        if (!raw.startsWith("{")) {
+            throw new ApiException(status, status == 404
+                    ? "El servicio solicitado no está disponible. Actualiza la aplicación e intenta nuevamente."
+                    : "El servidor devolvió una respuesta no válida. Intenta nuevamente en unos segundos.");
+        }
+        return new JSONObject(raw);
     }
 
     private String firebaseError(JSONObject response, String fallback) {

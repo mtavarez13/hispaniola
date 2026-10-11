@@ -17,14 +17,16 @@ export async function PATCH(req: NextRequest) {
     const phone = cleanText(body.phone, 30);
     const idNumber = cleanText(body.idNumber, 40);
     const country = cleanText(body.country, 2).toUpperCase();
+    const language = cleanText(body.language, 5).toLowerCase() || 'es';
 
     if (name.length < 2) return NextResponse.json({ success: false, error: 'Escribe un nombre válido' }, { status: 400 });
     if (phone && phone.replace(/\D/g, '').length < 7) return NextResponse.json({ success: false, error: 'Escribe un teléfono válido' }, { status: 400 });
     if (!['DO', 'HT', 'US'].includes(country)) return NextResponse.json({ success: false, error: 'Selecciona un país válido' }, { status: 400 });
+    if (!['es', 'en', 'ht'].includes(language)) return NextResponse.json({ success: false, error: 'Selecciona un idioma válido' }, { status: 400 });
 
     const profileRef = adminDb.collection('users').doc(identity.uid);
     await Promise.all([
-      profileRef.set({ name, phone, idNumber, country, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+      profileRef.set({ name, phone, idNumber, country, language, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
       adminAuth.updateUser(identity.uid, { displayName: name }),
     ]);
     const updated = (await profileRef.get()).data() || {};

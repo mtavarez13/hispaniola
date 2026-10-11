@@ -1,98 +1,59 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Calculator, DollarSign, Landmark, Loader2, RefreshCw, Save, Send, TrendingUp, Users } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
-import { DollarSign, TrendingUp, CreditCard, PiggyBank, ArrowDownRight, ArrowUpRight } from "lucide-react"
-import { useSystemSettings } from "@/lib/settings-context"
-import { formatNumber } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+type AccountingData = {
+  principalBalanceDOP: number; remittanceBalanceDOP: number; rechargeServicesBalanceDOP: number; totalUsersDOP: number; totalSubAgentsDOP: number;
+  rates: { dopPerUsd: number; htgPerUsd: number; htgPerDop: number };
+  users: Array<{ uid: string; name: string; email: string; role: string; clientCode: string; primaryCurrency: string; walletBalance: number; savingsBalance: number; balanceDOP: number; agentAccountMode: string }>;
+  ledger: Array<{ id: string; type: string; direction: string; amountDOP: number; description?: string; targetName?: string; performedBy?: string; createdAt?: string }>;
+  rechargeProfitability: {
+    products: Array<{ key: string; productId: number; name: string; type: string; image?: string; enabled: boolean; providerRule: { kind: "percent" | "fixed"; value: number }; agentRule: { kind: "percent" | "fixed"; value: number } }>;
+    totals: { salesDOP: number; providerCommissionDOP: number; agentBenefitDOP: number; platformMarginDOP: number; transactions: number };
+  };
+}
+const dop = (value: number) => `RD$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export default function AccountingPage() {
-  const { settings } = useSystemSettings()
-
-  const platformFee = settings?.platformFeePercentage ?? 5.0
-  const agentFee = settings?.agentPayoutPercentage ?? 2.0
-
-  const financialStats = [
-    { title: "Volumen Total", value: "$128,450.00", icon: DollarSign, trend: "+12.5%", trendType: "up", desc: "Monto total enviado" },
-    { title: "Comisiones HP", value: "$6,422.50", icon: TrendingUp, trend: "+5.2%", trendType: "up", desc: `Ganancia por fee del ${platformFee}%` },
-    { title: "Pagos a Agentes", value: "$2,569.00", icon: CreditCard, trend: "-2.1%", trendType: "down", desc: `Comisiones de red (${agentFee}%)` },
-    { title: "Balance Neto", value: "$3,853.50", icon: PiggyBank, trend: "+8.4%", trendType: "up", desc: "Utilidad operativa bruta" },
-  ]
-
-  const transactions = [
-    { id: "TX-9001", date: "2024-05-20", type: "Ingreso", category: "Fee Transacción", amount: 25.00, status: "completed" },
-    { id: "TX-9002", date: "2024-05-20", type: "Egreso", category: "Comisión Agente", amount: -10.00, status: "completed" },
-    { id: "TX-9003", date: "2024-05-19", type: "Ingreso", category: "Recarga Fondo", amount: 5000.00, status: "completed" },
-    { id: "TX-9004", date: "2024-05-19", type: "Ingreso", category: "Fee Transacción", amount: 60.00, status: "completed" },
-  ]
-
-  return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">Módulo de Contabilidad</h1>
-        <p className="text-muted-foreground mt-1">Resumen financiero y flujo de caja de la plataforma.</p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {financialStats.map((stat) => (
-          <Card key={stat.title} className="border-none shadow-md bg-white">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
-              <stat.icon className="h-4 w-4 text-accent" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">{stat.value}</div>
-              <div className="flex items-center mt-1">
-                <span className={`text-xs font-medium flex items-center mr-1 ${stat.trendType === 'up' ? "text-green-600" : "text-red-600"}`}>
-                  {stat.trendType === 'up' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                  {stat.trend}
-                </span>
-                <p className="text-[10px] text-muted-foreground">{stat.desc}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Card className="border-none shadow-md bg-white">
-        <CardHeader>
-          <CardTitle className="text-xl font-bold text-primary">Movimientos Financieros</CardTitle>
-          <CardDescription>Registro histórico de ingresos y egresos operativos.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border border-border">
-            <Table>
-              <TableHeader className="bg-secondary/30">
-                <TableRow>
-                  <TableHead>Referencia</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>Monto (USD)</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((tx) => (
-                  <TableRow key={tx.id}>
-                    <TableCell className="font-medium text-primary">{tx.id}</TableCell>
-                    <TableCell className="text-sm">{tx.date}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px]">{tx.category}</Badge>
-                    </TableCell>
-                    <TableCell className={`font-bold ${tx.amount > 0 ? 'text-green-600' : 'text-red-600'}`} suppressHydrationWarning>
-                      {tx.amount > 0 ? '+' : ''}{formatNumber(tx.amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="default" className="bg-green-100 text-green-700">Completado</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+  const { user, userProfile } = useAuth(); const { toast } = useToast()
+  const [data, setData] = useState<AccountingData | null>(null); const [loading, setLoading] = useState(true); const [working, setWorking] = useState("")
+  const [rechargeAmount, setRechargeAmount] = useState(0); const [fundAmount, setFundAmount] = useState(0); const [targetUid, setTargetUid] = useState("")
+  const [rechargeServiceType, setRechargeServiceType] = useState<"remittances" | "recharges">("remittances")
+  const [rates, setRates] = useState({ dopPerUsd: 58.5, htgPerUsd: 132.2, htgPerDop: 2.03 })
+  const headers = useCallback(async () => ({ "Content-Type": "application/json", Authorization: `Bearer ${await user?.getIdToken()}` }), [user])
+  const load = useCallback(async () => { if (!user) return; setLoading(true); try { const response = await fetch("/api/admin/accounting", { headers: await headers(), cache: "no-store" }); const body = await response.json(); if (!response.ok || !body.success) throw new Error(body.error || "No se pudo cargar contabilidad"); setData(body); setRates(body.rates) } catch (error) { toast({ variant: "destructive", title: "Error contable", description: error instanceof Error ? error.message : "Error inesperado" }) } finally { setLoading(false) } }, [user, headers, toast])
+  useEffect(() => { load() }, [load])
+  const post = async (payload: Record<string, unknown>, key: string, success: string) => { setWorking(key); try { const response = await fetch("/api/admin/accounting", { method: "POST", headers: await headers(), body: JSON.stringify(payload) }); const body = await response.json(); if (!response.ok || !body.success) throw new Error(body.error || "No se pudo completar la operación"); toast({ title: success }); await load() } catch (error) { toast({ variant: "destructive", title: "Operación rechazada", description: error instanceof Error ? error.message : "Error inesperado" }) } finally { setWorking("") } }
+  const totals = useMemo(() => ({ custody: Number(data?.totalUsersDOP || 0), network: Number(data?.totalSubAgentsDOP || 0), remittances: Number(data?.remittanceBalanceDOP ?? data?.principalBalanceDOP ?? 0), recharges: Number(data?.rechargeServicesBalanceDOP || 0) }), [data])
+  const updateAgentRule = (key: string, patch: Partial<{ kind: "percent" | "fixed"; value: number }>) => setData((current) => current ? { ...current, rechargeProfitability: { ...current.rechargeProfitability, products: current.rechargeProfitability.products.map((item) => item.key === key ? { ...item, agentRule: { ...item.agentRule, ...patch } } : item) } } : current)
+  if (userProfile?.role !== "admin") return <Card><CardHeader><CardTitle>Acceso restringido</CardTitle></CardHeader></Card>
+  return <div className="mx-auto max-w-7xl space-y-6 pb-12">
+    <div className="flex items-center justify-between"><div><h1 className="flex items-center gap-2 text-3xl font-black text-primary"><Calculator /> Contabilidad general</h1><p className="text-sm text-muted-foreground">Cuenta principal, tasas, fondeo de usuarios y libro auditable.</p></div><Button variant="outline" onClick={load}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></Button></div>
+    <div className="grid gap-4 md:grid-cols-5"><Stat label="Fondo Remesas" value={totals.remittances} color="text-blue-700"/><Stat label="Fondo Recargas RD" value={totals.recharges} color="text-emerald-700"/><Stat label="Balances de usuarios" value={totals.custody}/><Stat label="Balances subagentes" value={totals.network}/><Stat label="Total general controlado" value={totals.remittances + totals.recharges + totals.custody} color="text-primary"/></div>
+    <div className="grid gap-5 lg:grid-cols-2">
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><Landmark className="h-5 w-5"/> Recargar fondo operativo</CardTitle><CardDescription>Los fondos de Remesas y Recargas Dominicanas se administran por separado.</CardDescription></CardHeader><CardContent className="space-y-3"><Label>Servicio</Label><select className="flex h-10 w-full rounded-md border bg-background px-3 text-sm" value={rechargeServiceType} onChange={(e) => setRechargeServiceType(e.target.value as "remittances" | "recharges")}><option value="remittances">Envíos de remesas</option><option value="recharges">Recargas Dominicanas</option></select><Label>Monto en DOP</Label><Input type="number" min="0" step="100" value={rechargeAmount || ""} onChange={(e) => setRechargeAmount(Number(e.target.value))}/><Button disabled={!!working || rechargeAmount <= 0} onClick={() => post({ action: "principal_recharge", serviceType: rechargeServiceType, amountDOP: rechargeAmount }, "recharge", `Fondo de ${rechargeServiceType === "recharges" ? "Recargas Dominicanas" : "Remesas"} recargado`)} className="w-full gap-2">{working === "recharge" ? <Loader2 className="h-4 w-4 animate-spin"/> : <DollarSign className="h-4 w-4"/>} Recargar fondo</Button></CardContent></Card>
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><Send className="h-5 w-5"/> Recargar usuario</CardTitle><CardDescription>Cliente y subagente reciben una sola billetera utilizable en remesas, recargas y pagos.</CardDescription></CardHeader><CardContent className="space-y-3"><Label>Cliente o subagente vinculado</Label><select className="flex h-10 w-full rounded-md border bg-background px-3 text-sm" value={targetUid} onChange={(e) => setTargetUid(e.target.value)}><option value="">Seleccionar…</option>{data?.users.map((item) => <option key={item.uid} value={item.uid}>{item.name} · {item.clientCode || item.email} · {item.primaryCurrency}</option>)}</select><Label>Monto a acreditar en DOP</Label><Input type="number" min="0" step="100" value={fundAmount || ""} onChange={(e) => setFundAmount(Number(e.target.value))}/><Button disabled={!!working || !targetUid || fundAmount <= 0} onClick={() => post({ action: "fund_user", uid: targetUid, amountDOP: fundAmount }, "fund", "Usuario recargado correctamente")} className="w-full gap-2">{working === "fund" ? <Loader2 className="h-4 w-4 animate-spin"/> : <Users className="h-4 w-4"/>} Recargar billetera única</Button></CardContent></Card>
     </div>
-  )
+    <Card><CardHeader><CardTitle>Tasas operativas</CardTitle><CardDescription>Referencias utilizadas por billeteras, recargas y remesas.</CardDescription></CardHeader><CardContent className="grid gap-3 md:grid-cols-4"><Rate label="USD → DOP" value={rates.dopPerUsd} step="0.01" onChange={(value) => setRates({ ...rates, dopPerUsd: value })}/><Rate label="USD → HTG" value={rates.htgPerUsd} step="0.01" onChange={(value) => setRates({ ...rates, htgPerUsd: value })}/><Rate label="DOP → HTG" value={rates.htgPerDop} step="0.001" onChange={(value) => setRates({ ...rates, htgPerDop: value })}/><Button className="self-end gap-2" disabled={!!working} onClick={() => post({ action: "update_rates", ...rates }, "rates", "Tasas actualizadas")}><Save className="h-4 w-4"/> Guardar tasas</Button></CardContent></Card>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5"/> Rentabilidad de Recargas Dominicanas</CardTitle><CardDescription>La comisión del proveedor proviene de la tabla suministrada. Define cuánto recibe cada agente por servicio; los clientes siempre reciben RD$0.00.</CardDescription></CardHeader><CardContent className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-4"><MiniStat label="Ventas procesadas" value={data?.rechargeProfitability?.totals.salesDOP || 0}/><MiniStat label="Comisión proveedor" value={data?.rechargeProfitability?.totals.providerCommissionDOP || 0} color="text-emerald-700"/><MiniStat label="Beneficios agentes" value={data?.rechargeProfitability?.totals.agentBenefitDOP || 0} color="text-amber-700"/><MiniStat label="Margen HispaniolaPay" value={data?.rechargeProfitability?.totals.platformMarginDOP || 0} color="text-blue-700"/></div>
+      <div className="max-h-[520px] overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Servicio</TableHead><TableHead>Comisión proveedor</TableHead><TableHead>Beneficio agente</TableHead><TableHead>Valor</TableHead><TableHead>Estado</TableHead></TableRow></TableHeader><TableBody>{data?.rechargeProfitability?.products.map((item) => <TableRow key={item.key}><TableCell><div className="font-bold">{item.name}</div><div className="text-[11px] text-muted-foreground">{item.type} · ID {item.productId}</div></TableCell><TableCell className="font-bold text-emerald-700">{item.providerRule.kind === "percent" ? `${item.providerRule.value}%` : dop(item.providerRule.value)}</TableCell><TableCell><select className="h-9 rounded-md border bg-background px-2 text-sm" value={item.agentRule.kind} onChange={(e) => updateAgentRule(item.key, { kind: e.target.value as "percent" | "fixed" })}><option value="fixed">RD$ fijo</option><option value="percent">Porcentaje</option></select></TableCell><TableCell><Input className="w-28" type="number" min="0" max={item.agentRule.kind === "percent" ? 100 : undefined} step="0.01" value={item.agentRule.value} onChange={(e) => updateAgentRule(item.key, { value: Number(e.target.value) })}/></TableCell><TableCell><Badge variant={item.enabled ? "default" : "outline"}>{item.enabled ? "Activo" : "Proveedor pendiente"}</Badge></TableCell></TableRow>)}</TableBody></Table></div>
+      <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950 md:flex-row md:items-center md:justify-between"><span>El beneficio solo se acumula cuando el usuario tiene rol Agente y la operación termina correctamente. Puede canjearlo posteriormente desde su billetera.</span><Button disabled={!!working || !data?.rechargeProfitability} onClick={() => post({ action: "update_agent_benefits", benefits: data?.rechargeProfitability.products.map((item) => ({ key: item.key, ...item.agentRule })) || [] }, "benefits", "Beneficios de agentes actualizados")} className="shrink-0 gap-2"><Save className="h-4 w-4"/> Guardar beneficios</Button></div>
+    </CardContent></Card>
+    <Card><CardHeader><CardTitle>Balances individuales</CardTitle><CardDescription>Cada cliente y subagente dispone de una sola billetera para todos los servicios.</CardDescription></CardHeader><CardContent><div className="max-h-[420px] overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Usuario</TableHead><TableHead>Tipo</TableHead><TableHead>Modalidad</TableHead><TableHead>Moneda</TableHead><TableHead>Disponible</TableHead><TableHead>Equivalente DOP</TableHead></TableRow></TableHeader><TableBody>{data?.users.map((item) => <TableRow key={item.uid}><TableCell><div className="font-bold">{item.name}</div><div className="text-[11px] text-muted-foreground">{item.clientCode || item.email}</div></TableCell><TableCell><Badge variant="outline">{item.role}</Badge></TableCell><TableCell><Badge className={item.agentAccountMode === "postpaid" ? "bg-violet-600" : "bg-emerald-600"}>{item.role === "agent" ? item.agentAccountMode.toUpperCase() : "CLIENTE"}</Badge></TableCell><TableCell>{item.primaryCurrency}</TableCell><TableCell className="font-bold">{item.walletBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell><TableCell>{dop(item.balanceDOP)}</TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
+    <Card><CardHeader><CardTitle>Libro contable</CardTitle><CardDescription>Historial permanente de recargas, fondeos y cambios de tasa.</CardDescription></CardHeader><CardContent><div className="max-h-[420px] overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Operación</TableHead><TableHead>Detalle</TableHead><TableHead>Monto DOP</TableHead><TableHead>Ejecutado por</TableHead></TableRow></TableHeader><TableBody>{data?.ledger.map((item) => <TableRow key={item.id}><TableCell className="whitespace-nowrap text-xs">{item.createdAt ? new Date(item.createdAt).toLocaleString("es-DO") : "—"}</TableCell><TableCell><Badge variant="outline">{item.type}</Badge></TableCell><TableCell>{item.targetName || item.description || "—"}</TableCell><TableCell className={item.direction === "in" ? "font-bold text-emerald-700" : item.direction === "out" ? "font-bold text-red-700" : ""}>{item.direction === "in" ? "+" : item.direction === "out" ? "−" : ""}{dop(item.amountDOP)}</TableCell><TableCell className="text-xs">{item.performedBy || "Sistema"}</TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
+  </div>
 }
+
+function Stat({ label, value, color = "" }: { label: string; value: number; color?: string }) { return <Card><CardHeader className="pb-2"><CardDescription>{label}</CardDescription></CardHeader><CardContent className={`text-2xl font-black ${color}`}>{dop(value)}</CardContent></Card> }
+function MiniStat({ label, value, color = "" }: { label: string; value: number; color?: string }) { return <div className="rounded-xl border bg-slate-50 p-4"><div className="text-xs text-muted-foreground">{label}</div><div className={`mt-1 text-xl font-black ${color}`}>{dop(value)}</div></div> }
+function Rate({ label, value, step, onChange }: { label: string; value: number; step: string; onChange: (value: number) => void }) { return <div><Label>{label}</Label><Input type="number" step={step} value={value} onChange={(e) => onChange(Number(e.target.value))}/></div> }

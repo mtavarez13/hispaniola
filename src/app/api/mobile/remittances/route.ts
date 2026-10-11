@@ -8,6 +8,7 @@ import {
   formatHaitiPhoneNumber,
   moncashRequestCashIn,
 } from '@/lib/bencash/service';
+import { convertCurrency, currencySymbol, fromUsd, getEffectiveRates, normalizeWalletCurrency, toUsd, type WalletCurrency } from '@/lib/currency';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,15 +27,18 @@ type Reservation =
       balance: number;
       newBalance: number;
       sourceAmount: number;
-      sourceCurrency: 'USD' | 'DOP';
+      sourceCurrency: WalletCurrency;
       amountDOP: number;
       rateHTG: number;
       rateDOP: number;
+      rateDOPToHTG: number;
       feeUSD: number;
+      feePercent: number;
       deliveredUSD: number;
       amountHTG: number;
       benefitRatePercent: number;
       benefitEarnedDOP: number;
+      accountMode: 'prepaid' | 'postpaid';
     };
 
 export async function POST(req: NextRequest) {
@@ -84,12 +88,21 @@ export async function POST(req: NextRequest) {
   try {
     const config = await getPersistentBencashServerConfig();
     if (!config.privateKey) throw new MobileApiError(503, 'El canal de remesas no está configurado temporalmente');
+    const [settingsDocument, linkedSubAgents] = await Promise.all([
+      settingsRef.get(),
+      identity.email ? adminDb.collection('sub_agents').where('email', '==', identity.email).limit(1).get() : Promise.resolve(null),
+    ]);
+    const effectiveRates = await getEffectiveRates(settingsDocument.data() || {});
+    const linkedSubAgentRef = linkedSubAgents && !linkedSubAgents.empty ? linkedSubAgents.docs[0].ref : null;
+    const accountMode: 'prepaid' | 'postpaid' = linkedSubAgents && !linkedSubAgents.empty && linkedSubAgents.docs[0].data().accountMode === 'postpaid' ? 'postpaid' : 'prepaid';
+    const operationsRef = adminDb.collection('settings').doc('operations');
+    const accountingLedgerRef = adminDb.collection('accounting_ledger').doc(remittanceId);
 
     const reservation: Reservation = await adminDb.runTransaction(async (transaction): Promise<Reservation> => {
-      const [profileSnapshot, settingsSnapshot, existingSnapshot] = await Promise.all([
+      const [profileSnapshot, existingSnapshot, operationsSnapshot] = await Promise.all([
         transaction.get(profileRef),
-        transaction.get(settingsRef),
         transaction.get(remittanceRef),
+        transaction.get(operationsRef),
       ]);
 
       if (existingSnapshot.exists) {
@@ -98,33 +111,43 @@ export async function POST(req: NextRequest) {
       if (!profileSnapshot.exists) throw new MobileApiError(404, 'Perfil de cliente no encontrado');
 
       const profile = profileSnapshot.data() || {};
-      const settings = settingsSnapshot.data() || {};
-      const sourceCurrency: 'USD' | 'DOP' = profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
-      const balance = roundMoney(Number(profile.walletBalance || 0));
-      const rateHTG = Number(settings.publicRateHTG || 132.2);
-      const rateDOP = Number(settings.publicRateDOP || 58.5);
-      const sourceAmount = legacyAmountInUSD && sourceCurrency === 'DOP' ? roundMoney(requestedAmount * rateDOP) : requestedAmount;
-      const amountUSD = roundMoney(sourceCurrency === 'DOP' ? sourceAmount / rateDOP : sourceAmount);
+      const settings = settingsDocument.data() || {};
+      const sourceCurrency = normalizeWalletCurrency(profile.primaryCurrency);
+      const principalBalanceDOP = roundMoney(Number(operationsSnapshot.data()?.principalBalanceDOP ?? operationsSnapshot.data()?.currentOperatingBalanceDOP ?? 0));
+      const walletBalance = roundMoney(Number(profile.walletBalance || 0));
+      const balance = accountMode === 'postpaid' ? roundMoney(fromUsd(toUsd(principalBalanceDOP, 'DOP', effectiveRates), sourceCurrency, effectiveRates)) : walletBalance;
+      const rateHTG = effectiveRates.usdToHtg;
+      const rateDOP = effectiveRates.usdToDop;
+      const rateDOPToHTG = effectiveRates.dopToHtg;
+      const sourceAmount = legacyAmountInUSD && sourceCurrency !== 'USD' ? roundMoney(fromUsd(requestedAmount, sourceCurrency, effectiveRates)) : requestedAmount;
+      const amountUSD = roundMoney(toUsd(sourceAmount, sourceCurrency, effectiveRates));
       if (amountUSD < 1 || amountUSD > 5000) throw new MobileApiError(422, 'El equivalente del envío debe estar entre US$1 y US$5,000');
-      const amountDOP = roundMoney(sourceCurrency === 'DOP' ? sourceAmount : amountUSD * rateDOP);
+      const amountDOP = roundMoney(fromUsd(amountUSD, 'DOP', effectiveRates));
       const configuredFee = profile.remittanceFeePercent ?? settings.haitiPublicFeePercent ?? 8;
       const parsedFee = Number(configuredFee);
       const feePercent = Number.isFinite(parsedFee) ? Math.max(0, Math.min(100, parsedFee)) : 8;
       const feeUSD = roundMoney(amountUSD * (feePercent / 100));
       const deliveredUSD = roundMoney(Math.max(0, amountUSD - feeUSD));
-      const amountHTG = roundMoney(deliveredUSD * rateHTG);
+      const deliveredSource = roundMoney(Math.max(0, sourceAmount - sourceAmount * (feePercent / 100)));
+      const amountHTG = roundMoney(convertCurrency(deliveredSource, sourceCurrency, 'HTG', effectiveRates));
       const benefitRatePercent = Math.max(0, Math.min(100, Number(profile.benefitRatePercent || 0)));
       const benefitEarnedDOP = roundMoney(amountDOP * benefitRatePercent / 100);
 
       if (balance < sourceAmount) {
-        throw new MobileApiError(409, `Saldo insuficiente. Disponible: ${sourceCurrency === 'DOP' ? 'RD$' : 'US$'}${balance.toFixed(2)}`);
+        throw new MobileApiError(409, `Saldo insuficiente. Disponible: ${currencySymbol(sourceCurrency)}${balance.toFixed(2)}`);
+      }
+      if (accountMode === 'prepaid' && principalBalanceDOP < amountDOP) {
+        throw new MobileApiError(409, 'El fondo administrativo de remesas no tiene balance suficiente. Contacta a soporte.');
       }
 
       const newBalance = roundMoney(balance - sourceAmount);
-      transaction.update(profileRef, {
-        walletBalance: newBalance,
-        walletUpdatedAt: FieldValue.serverTimestamp(),
-      });
+      const newWalletBalance = accountMode === 'prepaid' ? roundMoney(walletBalance - sourceAmount) : newBalance;
+      if (accountMode === 'prepaid') transaction.update(profileRef, { walletBalance: newWalletBalance, walletUpdatedAt: FieldValue.serverTimestamp() });
+      transaction.set(operationsRef, { principalBalanceDOP: roundMoney(principalBalanceDOP - amountDOP), currentOperatingBalanceDOP: roundMoney(principalBalanceDOP - amountDOP), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      transaction.set(accountingLedgerRef, { type: accountMode === 'postpaid' ? 'postpaid_remittance' : 'remittance_operating_debit', direction: 'out', amountDOP, targetUid: identity.uid, targetName: identity.name, subAgentId: linkedSubAgentRef?.id || '', operator, recipientName, status: 'reserved', previousBalanceDOP: principalBalanceDOP, newBalanceDOP: roundMoney(principalBalanceDOP - amountDOP), description: `Remesa ${accountMode} ${operator}`, performedBy: identity.email, createdAt: FieldValue.serverTimestamp() });
+      if (linkedSubAgentRef) {
+        transaction.set(linkedSubAgentRef, accountMode === 'postpaid' ? { postpaidUsedDOP: FieldValue.increment(amountDOP), updatedAtServer: FieldValue.serverTimestamp(), updatedAt: new Date().toISOString() } : { walletBalance: newWalletBalance, updatedAtServer: FieldValue.serverTimestamp(), updatedAt: new Date().toISOString() }, { merge: true });
+      }
       transaction.create(remittanceRef, {
         userId: identity.uid,
         userEmail: identity.email,
@@ -142,15 +165,17 @@ export async function POST(req: NextRequest) {
         amountHTG,
         rateHTG,
         rateDOP,
+        rateDOPToHTG,
         benefitRatePercent,
         benefitEarnedDOP,
+        accountMode,
         status: 'processing',
         idempotencyKey,
         createdAt: FieldValue.serverTimestamp(),
         createdAtIso: new Date().toISOString(),
       });
 
-      return { duplicate: false, balance, newBalance, sourceAmount, sourceCurrency, amountDOP, rateHTG, rateDOP, feeUSD, deliveredUSD, amountHTG, benefitRatePercent, benefitEarnedDOP };
+      return { duplicate: false, balance, newBalance: newWalletBalance, sourceAmount, sourceCurrency, amountDOP, rateHTG, rateDOP, rateDOPToHTG, feeUSD, feePercent, deliveredUSD, amountHTG, benefitRatePercent, benefitEarnedDOP, accountMode };
     });
 
     if (reservation.duplicate) {
@@ -213,16 +238,18 @@ export async function POST(req: NextRequest) {
       }
 
       await adminDb.runTransaction(async (transaction) => {
-        const [profileSnapshot, remittanceSnapshot] = await Promise.all([
+        const [profileSnapshot, remittanceSnapshot, operationsSnapshot] = await Promise.all([
           transaction.get(profileRef),
           transaction.get(remittanceRef),
+          transaction.get(operationsRef),
         ]);
         const current = Number(profileSnapshot.data()?.walletBalance || 0);
         if (remittanceSnapshot.data()?.status === 'processing') {
-          transaction.update(profileRef, {
-            walletBalance: roundMoney(current + reservation.sourceAmount),
-            walletUpdatedAt: FieldValue.serverTimestamp(),
-          });
+          if (reservation.accountMode === 'prepaid') transaction.update(profileRef, { walletBalance: roundMoney(current + reservation.sourceAmount), walletUpdatedAt: FieldValue.serverTimestamp() });
+          const principal = Number(operationsSnapshot.data()?.principalBalanceDOP ?? operationsSnapshot.data()?.currentOperatingBalanceDOP ?? 0);
+          transaction.set(operationsRef, { principalBalanceDOP: roundMoney(principal + reservation.amountDOP), currentOperatingBalanceDOP: roundMoney(principal + reservation.amountDOP), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          if (linkedSubAgentRef) transaction.set(linkedSubAgentRef, reservation.accountMode === 'postpaid' ? { postpaidUsedDOP: FieldValue.increment(-reservation.amountDOP), updatedAtServer: FieldValue.serverTimestamp(), updatedAt: new Date().toISOString() } : { walletBalance: roundMoney(current + reservation.sourceAmount), updatedAtServer: FieldValue.serverTimestamp(), updatedAt: new Date().toISOString() }, { merge: true });
+          transaction.set(accountingLedgerRef, { status: 'refunded', refundedAt: FieldValue.serverTimestamp() }, { merge: true });
           transaction.update(remittanceRef, {
             status: 'failed',
             providerCode,
@@ -249,8 +276,10 @@ export async function POST(req: NextRequest) {
         completedAt: completed ? FieldValue.serverTimestamp() : null,
         updatedAt: FieldValue.serverTimestamp(),
       });
+      transaction.set(accountingLedgerRef, { status, txId, completedAt: completed ? FieldValue.serverTimestamp() : null }, { merge: true });
       if (reservation.benefitEarnedDOP > 0) {
         transaction.update(profileRef, { benefitAccruedDOP: FieldValue.increment(reservation.benefitEarnedDOP), updatedAt: FieldValue.serverTimestamp() });
+        if (linkedSubAgentRef) transaction.set(linkedSubAgentRef, { benefitAccruedDOP: FieldValue.increment(reservation.benefitEarnedDOP), updatedAtServer: FieldValue.serverTimestamp() }, { merge: true });
       }
       const movementRef = profileRef.collection('wallet_movements').doc(remittanceId);
       transaction.set(movementRef, {
@@ -258,8 +287,11 @@ export async function POST(req: NextRequest) {
         direction: 'out',
         amount: reservation.sourceAmount,
         currency: reservation.sourceCurrency,
-        amountUSD: roundMoney(reservation.sourceCurrency === 'DOP' ? reservation.sourceAmount / reservation.rateDOP : reservation.sourceAmount),
+        amountUSD: roundMoney(toUsd(reservation.sourceAmount, reservation.sourceCurrency, effectiveRates)),
         amountDOP: reservation.amountDOP,
+        amountHTG: reservation.amountHTG,
+        feeUSD: reservation.feeUSD,
+        feePercent: reservation.feePercent,
         balanceAfterUSD: reservation.newBalance,
         balanceAfter: reservation.newBalance,
         operator,
@@ -282,9 +314,10 @@ export async function POST(req: NextRequest) {
         recipientPhone,
         amount: reservation.sourceAmount,
         sourceCurrency: reservation.sourceCurrency,
-        amountUSD: roundMoney(reservation.sourceCurrency === 'DOP' ? reservation.sourceAmount / reservation.rateDOP : reservation.sourceAmount),
+        amountUSD: roundMoney(toUsd(reservation.sourceAmount, reservation.sourceCurrency, effectiveRates)),
         amountDOP: reservation.amountDOP,
         feeUSD: reservation.feeUSD,
+        feePercent: reservation.feePercent,
         amountHTG: reservation.amountHTG,
         benefitRatePercent: reservation.benefitRatePercent,
         benefitEarnedDOP: reservation.benefitEarnedDOP,

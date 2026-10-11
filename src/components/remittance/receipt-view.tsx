@@ -20,6 +20,7 @@ export function ReceiptView({ transaction, user, type }: ReceiptViewProps) {
     <div className="flex flex-col items-center gap-6 p-4">
       <div className="w-[320px] bg-white p-6 shadow-xl border border-gray-200 font-mono text-[12px] leading-tight text-black print:shadow-none print:border-none print:m-0" id="thermal-receipt">
         <div className="text-center space-y-1 mb-4">
+          <img src="/branding/hispaniolapay-mark.png" alt="Logo HispaniolaPay" className="mx-auto mb-2 h-16 w-16 object-contain" />
           <h2 className="text-lg font-black uppercase tracking-tighter">Hispaniola Pay</h2>
           <p>Conectando la Isla</p>
           <p className="text-[10px]">Santo Domingo - Port-au-Prince - Miami</p>

@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { adminAuthError, requireAdmin } from '@/lib/server-auth';
 import { createAndPushMobileNotification } from '@/lib/mobile-notifications';
+import { currencySymbol, fromUsd, getEffectiveRates, normalizeWalletCurrency } from '@/lib/currency';
 
 export const dynamic = 'force-dynamic';
 const money = (value: number) => Math.round(value * 100) / 100;
@@ -10,7 +11,7 @@ const jsonDate = (value: any) => typeof value?.toDate === 'function' ? value.toD
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAdmin(req);
+    await requireAdmin(req, { allowOperations: true });
     const snapshot = await adminDb.collection('wallet_deposits').limit(100).get();
     const deposits = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data(), createdAt: jsonDate(doc.data().createdAt) || doc.data().createdAtIso, reviewedAt: jsonDate(doc.data().reviewedAt) })).sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return NextResponse.json({ success: true, deposits });
@@ -22,13 +23,15 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const admin = await requireAdmin(req);
+    const admin = await requireAdmin(req, { allowOperations: true });
     const body = await req.json();
     const id = String(body.id || '').trim();
     const action = body.action === 'reject' ? 'reject' : 'approve';
     const reason = String(body.reason || '').trim().slice(0, 240);
     if (!id) return NextResponse.json({ success: false, error: 'Depósito requerido' }, { status: 400 });
     const depositRef = adminDb.collection('wallet_deposits').doc(id);
+    const ratesDocument = await adminDb.collection('settings').doc('rates').get();
+    const effectiveRates = await getEffectiveRates(ratesDocument.data() || {});
     let notification: { userId: string; amountUSD: number; creditedAmount?: number; currency?: string; newBalance?: number; methodLabel: string } | null = null;
     const result = await adminDb.runTransaction(async (transaction) => {
       const depositSnapshot = await transaction.get(depositRef);
@@ -42,15 +45,13 @@ export async function PATCH(req: NextRequest) {
       }
       const userRef = adminDb.collection('users').doc(String(deposit.userId));
       const movementRef = userRef.collection('wallet_movements').doc(id);
-      const ratesRef = adminDb.collection('settings').doc('rates');
-      const [userSnapshot, movementSnapshot, ratesSnapshot] = await Promise.all([transaction.get(userRef), transaction.get(movementRef), transaction.get(ratesRef)]);
+      const [userSnapshot, movementSnapshot] = await Promise.all([transaction.get(userRef), transaction.get(movementRef)]);
       if (!userSnapshot.exists) throw new Error('CLIENT_NOT_FOUND');
       const amountUSD = money(Number(deposit.amountCreditedUSD || 0));
       if (amountUSD <= 0) throw new Error('INVALID_AMOUNT');
       const profile = userSnapshot.data() || {};
-      const primaryCurrency = profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
-      const rateDOP = Number(ratesSnapshot.data()?.publicRateDOP || 58.5);
-      const creditedAmount = primaryCurrency === 'DOP' ? money(amountUSD * rateDOP) : amountUSD;
+      const primaryCurrency = normalizeWalletCurrency(profile.primaryCurrency);
+      const creditedAmount = money(fromUsd(amountUSD, primaryCurrency, effectiveRates));
       const previousBalance = money(Number(profile.walletBalance || 0));
       const newBalance = money(previousBalance + creditedAmount);
       transaction.update(userRef, { walletBalance: newBalance, walletUpdatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
@@ -61,7 +62,7 @@ export async function PATCH(req: NextRequest) {
     });
     if (!result.duplicate && notification) {
       const n = notification as { userId: string; amountUSD: number; creditedAmount?: number; currency?: string; newBalance?: number; methodLabel: string };
-      const symbol = n.currency === 'DOP' ? 'RD$' : 'US$';
+      const symbol = currencySymbol(normalizeWalletCurrency(n.currency));
       await createAndPushMobileNotification(n.userId, action === 'approve' ? { title: 'Depósito acreditado', body: `Recibiste +${symbol}${Number(n.creditedAmount || n.amountUSD).toFixed(2)} sin comisión. Saldo disponible: ${symbol}${Number(n.newBalance).toFixed(2)}.`, type: 'deposit', amountUSD: n.amountUSD, referenceId: id } : { title: 'Depósito requiere revisión', body: `${n.methodLabel}: ${reason || 'No se pudo validar el comprobante'}.`, type: 'deposit', amountUSD: n.amountUSD, referenceId: id });
     }
     return NextResponse.json({ success: true, ...result });

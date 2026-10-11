@@ -69,7 +69,9 @@ import { RateAuditLog } from "@/lib/types"
 import { OfficialBanksSettingsCard } from "@/components/settings/official-banks-settings-card"
 import { LogoAndBrandingSettingsCard } from "@/components/settings/logo-and-branding-settings-card"
 import { GmailDepositsBoard } from "@/components/dashboard/gmail-deposits-board"
-import { ClientWalletsAdminTab } from "@/components/admin/client-wallets-admin-tab"
+import { AdministrativeOverviewPanel } from "@/components/admin/administrative-overview-panel"
+import { OpeningBalanceAdminCard } from "@/components/admin/opening-balance-admin-card"
+import { BenefitRedemptionsAdminCard } from "@/components/admin/benefit-redemptions-admin-card"
 import { formatNumber } from "@/lib/utils"
 
 export default function AdminPage() {
@@ -80,10 +82,12 @@ export default function AdminPage() {
 
   const role = userProfile?.role || (user as any)?.role || 'customer'
   const isAdmin = role === 'admin'
+  const isOperationsAdmin = isAdmin && userProfile?.canAccessSettings === false
 
   // Form State initialized from settings
   const [publicDOP, setPublicDOP] = useState<number>(58.50)
   const [publicHTG, setPublicHTG] = useState<number>(132.20)
+  const [publicDOPToHTG, setPublicDOPToHTG] = useState<number>(2.03)
   const [agentDOP, setAgentDOP] = useState<number>(59.20)
   const [agentHTG, setAgentHTG] = useState<number>(133.80)
   const [agentReceptionFee, setAgentReceptionFee] = useState<number>(1.50)
@@ -135,6 +139,7 @@ export default function AdminPage() {
     if (settings) {
       setPublicDOP(settings.publicRateDOP ?? 58.50)
       setPublicHTG(settings.publicRateHTG ?? 132.20)
+      setPublicDOPToHTG(settings.publicRateDOPToHTG ?? 2.03)
       setAgentDOP(settings.agentRateDOP ?? 59.20)
       setAgentHTG(settings.agentRateHTG ?? 133.80)
       setAgentReceptionFee(settings.agentReceptionFeeUSD ?? 1.50)
@@ -279,6 +284,7 @@ export default function AdminPage() {
       {
         publicRateDOP: publicDOP,
         publicRateHTG: publicHTG,
+        publicRateDOPToHTG: publicDOPToHTG,
         agentRateDOP: agentDOP,
         agentRateHTG: agentHTG,
         agentReceptionFeeUSD: agentReceptionFee,
@@ -312,6 +318,7 @@ export default function AdminPage() {
   const handleResetMarket = () => {
     setPublicDOP(58.50)
     setPublicHTG(132.20)
+    setPublicDOPToHTG(2.03)
     setAgentDOP(59.20)
     setAgentHTG(133.80)
     toast({
@@ -331,6 +338,14 @@ export default function AdminPage() {
   const agentPayoutFeeUSD = simNetUSD * (agentPayoutPct / 100)
   const agentTotalEarningsUSD = agentReceptionFee + agentPayoutFeeUSD
   const agentSpreadProfitLocal = simNetUSD * (selectedAgentRate - selectedPublicRate)
+
+  if (isOperationsAdmin) {
+    return (
+      <div className="mx-auto max-w-7xl pb-12">
+        <AdministrativeOverviewPanel operationsOnly />
+      </div>
+    )
+  }
 
   if (!isAdmin) {
     return (
@@ -414,7 +429,7 @@ export default function AdminPage() {
       </div>
 
       {/* Main Tabs */}
-      <Tabs defaultValue="rates" className="space-y-6">
+      <Tabs defaultValue="wallets" className="space-y-6">
         <TabsList className="bg-white p-1 border border-border rounded-lg grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 max-w-7xl">
           <TabsTrigger value="rates" className="gap-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-white">
             <TrendingUp className="w-4 h-4" /> Fijar Tasas
@@ -423,7 +438,7 @@ export default function AdminPage() {
             <Terminal className="w-4 h-4 text-purple-300" /> API Terceros
           </TabsTrigger>
           <TabsTrigger value="wallets" className="gap-2 text-xs font-semibold data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <PiggyBank className="w-4 h-4 text-emerald-300" /> Billeteras
+            <PiggyBank className="w-4 h-4 text-emerald-300" /> Panel General
           </TabsTrigger>
           <TabsTrigger value="gmail" className="gap-2 text-xs font-semibold data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <MailCheck className="w-4 h-4 text-emerald-300" /> Depósitos Gmail
@@ -779,6 +794,35 @@ export default function AdminPage() {
                   </div>
                   <p className="text-[11px] text-muted-foreground">
                     Si un cliente envía $100 USD, a la tasa público de {publicHTG} recibirá {((100 - (100 * (platformFeePct/100))) * publicHTG).toFixed(2)} HTG.
+                  </p>
+                </div>
+
+                {/* DOP to HTG direct rate */}
+                <div className="space-y-2 p-4 rounded-xl bg-gradient-to-br from-blue-50 to-red-50 border border-blue-200">
+                  <div className="flex justify-between items-center gap-3">
+                    <Label className="font-bold text-sm text-foreground flex items-center gap-2">
+                      <span>🇩🇴➔🇭🇹</span> Tasa Público DOP ➔ HTG
+                    </Label>
+                    <span className="text-xs font-semibold text-primary bg-white px-2 py-0.5 rounded border border-border">
+                      RD$1 = {publicDOPToHTG.toFixed(3)} HTG
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.001"
+                      value={publicDOPToHTG}
+                      onChange={(e) => setPublicDOPToHTG(parseFloat(e.target.value) || 0)}
+                      className="text-lg font-bold text-primary bg-white border-blue-200"
+                    />
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setPublicDOPToHTG(r => parseFloat((r + 0.001).toFixed(3)))} className="px-2 text-xs">+0.001</Button>
+                      <Button size="sm" variant="outline" onClick={() => setPublicDOPToHTG(r => Math.max(0.001, parseFloat((r - 0.001).toFixed(3))))} className="px-2 text-xs">-0.001</Button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Cada RD$1 enviado se convierte directamente en {publicDOPToHTG.toFixed(3)} HTG antes de aplicar la tarifa configurada al cliente.
                   </p>
                 </div>
 
@@ -1410,7 +1454,7 @@ export default function AdminPage() {
                       <TableRow>
                         <TableHead>Fecha / Hora</TableHead>
                         <TableHead>Administrador</TableHead>
-                        <TableHead>Tasa Público (DOP/HTG)</TableHead>
+                        <TableHead>Tasas Público (USD/DOP/HTG y DOP→HTG)</TableHead>
                         <TableHead>Tasa Agente (DOP/HTG)</TableHead>
                         <TableHead>Comisión Agente (Rec/Pag)</TableHead>
                         <TableHead>Nota / Motivo</TableHead>
@@ -1426,7 +1470,7 @@ export default function AdminPage() {
                             {log.updatedBy}
                           </TableCell>
                           <TableCell className="font-bold">
-                            🇩🇴 {log.publicRateDOP?.toFixed(2)} | 🇭🇹 {log.publicRateHTG?.toFixed(2)}
+                            🇩🇴 {log.publicRateDOP?.toFixed(2)} | 🇭🇹 {log.publicRateHTG?.toFixed(2)} | RD$1→{Number(log.publicRateDOPToHTG || 2.03).toFixed(3)} HTG
                           </TableCell>
                           <TableCell className="font-bold text-emerald-700">
                             🇩🇴 {log.agentRateDOP?.toFixed(2)} | 🇭🇹 {log.agentRateHTG?.toFixed(2)}
@@ -1449,7 +1493,9 @@ export default function AdminPage() {
 
         {/* TAB: BILLETERAS Y DEPÓSITOS DE CLIENTES */}
         <TabsContent value="wallets" className="space-y-6">
-          <ClientWalletsAdminTab />
+          <OpeningBalanceAdminCard />
+          <AdministrativeOverviewPanel />
+          <BenefitRedemptionsAdminCard />
         </TabsContent>
 
         {/* TAB: DEPÓSITOS GMAIL (BANCOS RD) */}

@@ -19,6 +19,7 @@ import {
   UserCog,
   UserRound,
   UsersRound,
+  Zap,
 } from "lucide-react"
 
 import Link from "next/link"
@@ -39,37 +40,45 @@ export function NavMain({ user }: { user: UserProfile }) {
   const role = user.role;
   const isAdmin = role === 'admin';
   const canAccessSettings = isAdmin && user.canAccessSettings !== false;
+  const canManageAdmins = isAdmin && user.canManageAdmins === true;
+  const isOperationsAdmin = isAdmin && user.canAccessSettings === false;
 
   const menuItems = [
     {
       title: t('sidebar_dashboard'),
       icon: LayoutDashboard,
       url: "/dashboard",
-      show: true,
+      show: !isOperationsAdmin,
     },
     {
       title: "Mi Billetera & Ahorro",
       icon: PiggyBank,
       url: "/dashboard/wallet",
-      show: true,
+      show: !isOperationsAdmin,
     },
     {
       title: t('sidebar_haiti_remittances'),
       icon: Smartphone,
       url: "/dashboard/haiti-remittances",
-      show: true,
+      show: !isOperationsAdmin,
+    },
+    {
+      title: "Recargas y servicios",
+      icon: Zap,
+      url: "/dashboard/recharges",
+      show: !isOperationsAdmin,
     },
     {
       title: t('sidebar_send'),
       icon: Send,
       url: "/dashboard/send",
-      show: true,
+      show: !isOperationsAdmin,
     },
     {
       title: t('sidebar_history'),
       icon: History,
       url: "/dashboard/history",
-      show: true,
+      show: !isOperationsAdmin,
     },
     {
       title: t('sidebar_payouts'),
@@ -81,31 +90,31 @@ export function NavMain({ user }: { user: UserProfile }) {
       title: t('sidebar_qik_invoices'),
       icon: Receipt,
       url: "/dashboard/facturas-qik",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: "Depósitos Gmail RD",
       icon: MailCheck,
       url: "/dashboard/gmail-deposits",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: t('sidebar_accounting'),
       icon: Calculator,
       url: "/dashboard/accounting",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: t('sidebar_sub_agents'),
       icon: Users,
       url: "/dashboard/sub-agents",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: t('sidebar_benefits_report'),
       icon: BarChart3,
       url: "/dashboard/reports",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: t('sidebar_admin'),
@@ -117,13 +126,13 @@ export function NavMain({ user }: { user: UserProfile }) {
       title: "API Terceros (B2B)",
       icon: Terminal,
       url: "/dashboard/partners-api",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: "Bandeja WhatsApp",
       icon: MessageSquare,
       url: "/dashboard/whatsapp-inbox",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: "Mi perfil",
@@ -135,13 +144,13 @@ export function NavMain({ user }: { user: UserProfile }) {
       title: "Perfiles de clientes",
       icon: UsersRound,
       url: "/dashboard/client-profiles",
-      show: isAdmin,
+      show: isAdmin && !isOperationsAdmin,
     },
     {
       title: "Administradores",
       icon: UserCog,
       url: "/dashboard/admin-users",
-      show: canAccessSettings,
+      show: canManageAdmins,
     },
     {
       title: t('sidebar_settings'),

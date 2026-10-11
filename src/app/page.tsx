@@ -46,7 +46,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 export default function Home() {
   const { t } = useI18n();
-  const { user, logout } = useAuth();
+  const { user, userProfile, logout } = useAuth();
   const { settings } = useSystemSettings();
   const [selectedCountry, setSelectedCountry] = useState<"DO" | "HT" | "US">("DO")
   const [selectedZone, setSelectedZone] = useState<string>("all")
@@ -298,13 +298,15 @@ export default function Home() {
 
               {/* Call to Actions */}
               <div className="flex flex-col sm:flex-row gap-3.5 pt-2">
-                <Link href="/dashboard/haiti-remittances">
-                  <Button className="h-14 px-7 bg-blue-600 hover:bg-blue-700 text-white font-black text-base rounded-2xl gap-2.5 shadow-xl shadow-blue-600/25 w-full sm:w-auto group">
-                    <Send className="w-5 h-5 text-amber-300" />
-                    Enviar a Haití Ahora
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform text-white/80" />
-                  </Button>
-                </Link>
+                {user && (
+                  <Link href={userProfile?.role === "admin" || userProfile?.role === "agent" ? "/dashboard/haiti-remittances" : "/dashboard/wallet?tab=send"}>
+                    <Button className="h-14 px-7 bg-blue-600 hover:bg-blue-700 text-white font-black text-base rounded-2xl gap-2.5 shadow-xl shadow-blue-600/25 w-full sm:w-auto group">
+                      <Send className="w-5 h-5 text-amber-300" />
+                      Enviar a Haití Ahora
+                      <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform text-white/80" />
+                    </Button>
+                  </Link>
+                )}
                 <a href="#bancos-oficiales">
                   <Button variant="outline" className="h-14 px-6 border-2 border-slate-300 hover:border-slate-400 bg-white text-slate-800 font-bold text-base rounded-2xl gap-2 shadow-xs w-full sm:w-auto">
                     <Landmark className="w-5 h-5 text-amber-600" />
@@ -607,7 +609,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
             <div className="bg-[#F8FAFC] p-8 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col items-center text-center space-y-4">
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
                 <Wallet className="w-7 h-7" />
@@ -620,7 +622,7 @@ export default function Home() {
               <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-700 font-black text-lg">
                 RD$
               </div>
-              <div className="text-3xl font-black text-slate-900">58.50 DOP</div>
+              <div className="text-3xl font-black text-slate-900">{Number(settings?.publicRateDOP || 58.5).toFixed(2)} DOP</div>
               <p className="text-xs font-bold text-slate-500 uppercase">Pesos Dominicanos por USD</p>
             </div>
 
@@ -628,8 +630,16 @@ export default function Home() {
               <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center text-red-700 font-black text-lg">
                 HTG
               </div>
-              <div className="text-3xl font-black text-slate-900">132.20 HTG</div>
+              <div className="text-3xl font-black text-slate-900">{Number(settings?.publicRateHTG || 132.2).toFixed(2)} HTG</div>
               <p className="text-xs font-bold text-slate-500 uppercase">Gourdes por USD</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-red-50 p-8 rounded-3xl border-2 border-blue-200 shadow-sm flex flex-col items-center text-center space-y-4">
+              <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-blue-800 font-black text-sm border border-blue-100">
+                RD$→G
+              </div>
+              <div className="text-3xl font-black text-slate-900">{Number(settings?.publicRateDOPToHTG || 2.03).toFixed(3)} HTG</div>
+              <p className="text-xs font-bold text-slate-600 uppercase">Gourdes por cada Peso Dominicano</p>
             </div>
           </div>
 

@@ -44,6 +44,7 @@ import { useToast } from "@/hooks/use-toast"
 import { WhatsAppSettingsCard } from "@/components/settings/whatsapp-settings-card"
 import { OfficialBanksSettingsCard } from "@/components/settings/official-banks-settings-card"
 import { LogoAndBrandingSettingsCard } from "@/components/settings/logo-and-branding-settings-card"
+import { RecargasApiSettingsCard } from "@/components/settings/recargas-api-settings-card"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 
@@ -452,6 +453,7 @@ export default function SettingsPage() {
 
         {/* TAB 1: BENCASH API ENDPOINTS & PING */}
         <TabsContent value="bencash" className="mt-6 space-y-6">
+          <RecargasApiSettingsCard />
           <Card className="border-none shadow-md bg-white overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-slate-900 via-primary to-slate-900 text-white p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -72,13 +72,16 @@ export function ExpressRemittanceCard() {
 
   const rateHTG = settings?.publicRateHTG ?? 132.20
   const rateDOP = settings?.publicRateDOP ?? 58.50
+  const rateDOPToHTG = settings?.publicRateDOPToHTG ?? 2.03
   const platformFeePct = settings?.haitiPublicFeePercent ?? settings?.platformFeePercentage ?? 8.0
 
   // Calculate fees and receiving amount
   const feeAmountUSD = amountUSD * (platformFeePct / 100)
   const amountAfterFeeUSD = Math.max(0, amountUSD - feeAmountUSD)
-  const calculatedHTG = Number((amountAfterFeeUSD * rateHTG).toFixed(2))
   const calculatedDOP = Number((amountUSD * rateDOP).toFixed(2))
+  const calculatedHTG = Number((currency === "DOP"
+    ? calculatedDOP * (1 - platformFeePct / 100) * rateDOPToHTG
+    : amountAfterFeeUSD * rateHTG).toFixed(2))
 
   // Handle currency toggle
   const handleAmountDopChange = (dopVal: number) => {

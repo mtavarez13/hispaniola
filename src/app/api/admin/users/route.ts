@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Administrador secundario creado sin acceso a Configuración.',
+      message: 'Administrador operativo creado con acceso limitado a clientes, subagentes y solicitudes.',
       user: { uid: account.uid, name, email, adminLevel: 'secondary', canAccessSettings: false },
     });
   } catch (error: any) {

@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 const DEFAULT_RATES = {
   publicRateDOP: 58.50,
   publicRateHTG: 132.20,
+  publicRateDOPToHTG: 2.03,
   publicRateUSD: 1.00,
   haitiPublicFeePercent: 8.0,
 };
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
     const marginPct = Number(partner.marginPercent) || 0; // % Fijado para el tercero
 
     // Tasa cruzada DOP -> HTG
-    const crossRateDopToHtg = Math.round((publicRateHTG / publicRateDOP) * 1000) / 1000;
+    const crossRateDopToHtg = Number(settings.publicRateDOPToHTG) || 2.03;
 
     return NextResponse.json(
       {

@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { adminAuthError, requireAdmin } from '@/lib/server-auth';
 import { createAndPushMobileNotification } from '@/lib/mobile-notifications';
+import { currencySymbol, fromUsd, getEffectiveRates, normalizeWalletCurrency } from '@/lib/currency';
 
 function money(value: number) { return Math.round(value * 100) / 100; }
 
@@ -37,13 +38,14 @@ export async function POST(req: NextRequest) {
     const creditId = idempotencyKey || `credit_${Date.now()}`;
     const movementRef = client.ref.collection('wallet_movements').doc(creditId);
     const ratesRef = adminDb.collection('settings').doc('rates');
+    const ratesDocument = await ratesRef.get();
+    const effectiveRates = await getEffectiveRates(ratesDocument.data() || {});
     const result = await adminDb.runTransaction(async (transaction) => {
-      const [profileSnapshot, existingMovement, ratesSnapshot] = await Promise.all([transaction.get(client.ref), transaction.get(movementRef), transaction.get(ratesRef)]);
+      const [profileSnapshot, existingMovement] = await Promise.all([transaction.get(client.ref), transaction.get(movementRef)]);
       if (existingMovement.exists) return { duplicate: true, ...(existingMovement.data() || {}) };
       const profile = profileSnapshot.data() || {};
-      const primaryCurrency = profile.primaryCurrency === 'DOP' ? 'DOP' : 'USD';
-      const rateDOP = Number(ratesSnapshot.data()?.publicRateDOP || 58.5);
-      const creditedAmount = primaryCurrency === 'DOP' ? money(amountUSD * rateDOP) : amountUSD;
+      const primaryCurrency = normalizeWalletCurrency(profile.primaryCurrency);
+      const creditedAmount = money(fromUsd(amountUSD, primaryCurrency, effectiveRates));
       const field = targetPocket === 'savings' ? 'savingsBalance' : 'walletBalance';
       const previousBalance = money(Number(profile[field] || 0));
       const newBalance = money(previousBalance + creditedAmount);
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
     if (!result.duplicate) {
       await createAndPushMobileNotification(client.id, {
         title: 'Depósito acreditado',
-        body: `Recibiste +${result.primaryCurrency === 'DOP' ? 'RD$' : 'US$'}${Number(result.creditedAmount).toFixed(2)} en ${targetPocket === 'savings' ? 'tu ahorro' : 'tu billetera'}. Nuevo saldo: ${result.primaryCurrency === 'DOP' ? 'RD$' : 'US$'}${Number(result.newBalance).toFixed(2)}.`,
+        body: `Recibiste +${currencySymbol(result.primaryCurrency)}${Number(result.creditedAmount).toFixed(2)} en ${targetPocket === 'savings' ? 'tu ahorro' : 'tu billetera'}. Nuevo saldo: ${currencySymbol(result.primaryCurrency)}${Number(result.newBalance).toFixed(2)}.`,
         type: 'deposit', amountUSD, referenceId: creditId,
       });
     }

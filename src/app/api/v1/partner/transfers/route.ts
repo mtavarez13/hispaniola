@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 const DEFAULT_RATES = {
   publicRateDOP: 58.50,
   publicRateHTG: 132.20,
+  publicRateDOPToHTG: 2.03,
   publicRateUSD: 1.00,
   haitiPublicFeePercent: 8.0,
 };

@@ -5,7 +5,14 @@ service cloud.firestore {
       return request.auth != null;
     }
     function isAdmin() {
-      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('canAccessSettings', true) != false;
+    }
+    function isOperationsAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('canAccessSettings', true) == false;
     }
     match /users/{userId} {
       allow read: if signedIn();
@@ -20,28 +27,30 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     match /settings/{settingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if !isOperationsAdmin();
       match /history/{auditId} {
-        allow read, write: if true;
+        allow read: if true;
+        allow write: if !isOperationsAdmin();
       }
     }
     match /qik_invoices/{invoiceId} {
-      allow read, write: if true;
+      allow read, write: if !isOperationsAdmin();
     }
     match /qik_pool/{poolId} {
-      allow read, write: if true;
+      allow read, write: if !isOperationsAdmin();
     }
     match /qik_agents/{agentId} {
-      allow read, write: if true;
+      allow read, write: if !isOperationsAdmin();
     }
     match /qik_transactions/{txId} {
-      allow read, write: if true;
+      allow read, write: if !isOperationsAdmin();
     }
     match /partners/{partnerId} {
-      allow read, write: if true;
+      allow read, write: if !isOperationsAdmin();
     }
     match /partner_transfers/{transferId} {
-      allow read, write: if true;
+      allow read, write: if !isOperationsAdmin();
     }
     // Solo el backend con Firebase Admin puede leer o escribir estas colecciones.
     match /whatsapp_messages/{messageId} {

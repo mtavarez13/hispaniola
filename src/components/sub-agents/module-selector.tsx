@@ -89,6 +89,14 @@ const AVAILABLE_MODULES: ModuleDefinition[] = [
     icon: BarChart3,
     badge: "Auditoría",
     badgeColor: "bg-cyan-100 text-cyan-800 border-cyan-200"
+  },
+  {
+    key: "thermalReceipts",
+    title: "Factura térmica 58 mm",
+    description: "Permite imprimir comprobantes por Bluetooth y compartir el PDF por WhatsApp. Opcional por subagente.",
+    icon: Receipt,
+    badge: "Opcional",
+    badgeColor: "bg-amber-100 text-amber-800 border-amber-200"
   }
 ];
 
@@ -108,7 +116,8 @@ export function ModuleSelector({ modules, onChange }: ModuleSelectorProps) {
       qikInvoices: true,
       mobileTopups: true,
       accounting: true,
-      reports: true
+      reports: true,
+      thermalReceipts: true,
     };
     onChange(allEnabled);
   };
@@ -121,7 +130,8 @@ export function ModuleSelector({ modules, onChange }: ModuleSelectorProps) {
       qikInvoices: false,
       mobileTopups: false,
       accounting: false,
-      reports: false
+      reports: false,
+      thermalReceipts: false,
     };
     onChange(allDisabled);
   };

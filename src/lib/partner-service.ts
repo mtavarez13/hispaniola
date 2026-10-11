@@ -297,6 +297,7 @@ export function calculatePartnerQuote(
 ) {
   const rateDOP = settings.publicRateDOP || 58.5;
   const rateHTG = settings.publicRateHTG || 132.2;
+  const rateDOPToHTG = settings.publicRateDOPToHTG || 2.03;
   const partnerMarginPct = Number(partner.marginPercent) || 0; // % fijado al tercero (e.g. 3.5%)
 
   // 1. Determinar el monto de envío en USD base
@@ -312,7 +313,7 @@ export function calculatePartnerQuote(
   // 2. Determinar la tasa de cambio efectiva
   let effectiveExchangeRate = 0;
   if (params.targetCurrency === 'HTG') {
-    effectiveExchangeRate = rateHTG;
+    effectiveExchangeRate = params.sourceCurrency === 'DOP' ? rateDOPToHTG : rateHTG;
   } else if (params.targetCurrency === 'DOP') {
     effectiveExchangeRate = rateDOP;
   } else {
@@ -337,7 +338,8 @@ export function calculatePartnerQuote(
       sendAmountUSD = targetAmount / effectiveExchangeRate;
     }
   } else {
-    targetAmount = Math.round(sendAmountUSD * effectiveExchangeRate * 100) / 100;
+    const conversionBase = params.sourceCurrency === 'DOP' && params.targetCurrency === 'HTG' ? rawSend : sendAmountUSD;
+    targetAmount = Math.round(conversionBase * effectiveExchangeRate * 100) / 100;
   }
 
   // 5. Costo neto que se le debita al partner de su billetera B2B:

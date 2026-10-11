@@ -109,6 +109,13 @@ export default function DashboardLayout({
 }) {
   const { userProfile, logout, user } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    const isOperationsAdmin = userProfile?.role === "admin" && userProfile.canAccessSettings === false
+    const allowedPath = pathname === "/dashboard/admin" || pathname === "/dashboard/profile"
+    if (isOperationsAdmin && !allowedPath) router.replace("/dashboard/admin")
+  }, [pathname, router, userProfile])
 
   const currentProfile: UserProfile = userProfile || {
     uid: user?.uid || "guest",

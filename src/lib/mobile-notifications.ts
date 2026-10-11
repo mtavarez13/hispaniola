@@ -7,7 +7,7 @@ import { adminDb, adminMessaging } from '@/lib/firebase-admin';
 export interface MobileNotificationInput {
   title: string;
   body: string;
-  type: 'deposit' | 'remittance' | 'security' | 'general';
+  type: 'deposit' | 'remittance' | 'transfer' | 'security' | 'general';
   amountUSD?: number;
   referenceId?: string;
 }

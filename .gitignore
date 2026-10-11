@@ -44,6 +44,10 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+/.firebase/
+
+# temporary working files
+/tmp/
 
 # local package/repair caches
 /.npm-cache/

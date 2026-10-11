@@ -33,6 +33,7 @@ import {
   DollarSign,
   Printer,
   Sparkles,
+  Coins,
   Check,
   ChevronRight,
   Info
@@ -81,10 +82,12 @@ function ClientWalletContent() {
     phone: userProfile?.phone || "+1 (829) 450-2211",
     idNumber: userProfile?.idNumber || "",
   });
-  const [primaryCurrency, setPrimaryCurrency] = useState<"USD" | "DOP">(userProfile?.primaryCurrency === "DOP" ? "DOP" : "USD");
+  const initialCurrency = userProfile?.primaryCurrency === "DOP" || userProfile?.primaryCurrency === "HTG" ? userProfile.primaryCurrency : "USD";
+  const [primaryCurrency, setPrimaryCurrency] = useState<"USD" | "DOP" | "HTG">(initialCurrency);
   const [remittanceFeePercent, setRemittanceFeePercent] = useState(Number(userProfile?.remittanceFeePercent ?? settings?.haitiPublicFeePercent ?? 8));
   const [benefitRatePercent, setBenefitRatePercent] = useState(Number(userProfile?.benefitRatePercent || 0));
   const [benefitAccruedDOP, setBenefitAccruedDOP] = useState(Number(userProfile?.benefitAccruedDOP || 0));
+  const [benefitRedeeming, setBenefitRedeeming] = useState(false);
 
   // Data lists
   const [deposits, setDeposits] = useState<ClientDepositRecord[]>([]);
@@ -93,8 +96,9 @@ function ClientWalletContent() {
   const [copiedCode, setCopiedCode] = useState(false);
 
   // Exchange Rates
-  const rateDOP = settings?.publicRateDOP || 58.5;
-  const rateHTG = settings?.publicRateHTG || 132.2;
+  const [rateDOP, setRateDOP] = useState(settings?.publicRateDOP || 58.5);
+  const [rateHTG, setRateHTG] = useState(settings?.publicRateHTG || 132.2);
+  const [rateDOPToHTG, setRateDOPToHTG] = useState(settings?.publicRateDOPToHTG || 2.03);
   const feePercent = remittanceFeePercent;
 
   // Load balances and data
@@ -112,20 +116,23 @@ function ClientWalletContent() {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || "No se pudo sincronizar la billetera");
         const account = data.account || {};
-        setPrimaryCurrency(account.primaryCurrency === "DOP" ? "DOP" : "USD");
+        setPrimaryCurrency(account.primaryCurrency === "DOP" || account.primaryCurrency === "HTG" ? account.primaryCurrency : "USD");
+        setRateDOP(Number(data.rates?.dopPerUsd || settings?.publicRateDOP || 58.5));
+        setRateHTG(Number(data.rates?.htgPerUsd || settings?.publicRateHTG || 132.2));
+        setRateDOPToHTG(Number(data.rates?.htgPerDop || settings?.publicRateDOPToHTG || 2.03));
         setRemittanceFeePercent(Number(account.remittanceFeePercent ?? data.rates?.remittanceFeePercent ?? settings?.haitiPublicFeePercent ?? 8));
         setBenefitRatePercent(Number(account.benefitRatePercent || 0));
         setBenefitAccruedDOP(Number(account.benefitAccruedDOP || 0));
         setBalances({ walletBalance: Number(account.walletBalance ?? account.walletBalanceUSD ?? 0), savingsBalance: Number(account.savingsBalance ?? account.savingsBalanceUSD ?? 0), clientCode: account.clientCode || "", phone: account.phone || "", idNumber: account.idNumber || "" });
         setMovements((data.movements || []).map((item: any) => ({
           id: item.id, clientId: uid, type: item.type as ClientWalletMovement["type"], title: item.title,
-          description: item.description, amountUSD: Number(item.amountUSD || 0), amount: Number(item.amount ?? item.amountUSD ?? 0), currency: item.currency === "DOP" ? "DOP" : "USD", direction: item.direction,
+          description: item.description, amountUSD: Number(item.amountUSD || 0), amount: Number(item.amount ?? item.amountUSD ?? 0), currency: item.currency === "DOP" || item.currency === "HTG" ? item.currency : "USD", direction: item.direction,
           targetPocket: "main", date: item.createdAt || new Date().toISOString(), referenceId: item.referenceId,
           recipient: item.recipientName, status: item.status === "completed" ? "completed" : item.status === "failed" ? "failed" : "pending", receiptCode: item.receiptCode,
         })));
         setDeposits((data.deposits || []).map((item: any) => ({
           id: item.id, clientId: uid, clientName: userProfile?.name || "Cliente", clientCode: account.clientCode || "",
-          amount: Number(item.amount || 0), currency: item.currency === "DOP" ? "DOP" : "USD", amountCreditedUSD: Number(item.amountCreditedUSD || 0),
+          amount: Number(item.amount || 0), currency: item.currency === "DOP" || item.currency === "HTG" ? item.currency : "USD", amountCreditedUSD: Number(item.amountCreditedUSD || 0),
           method: "bank_transfer", bankReference: item.reference, targetPocket: "main", status: item.status,
           voucherCode: item.reference || item.id, notes: item.methodLabel, createdAt: item.createdAt || new Date().toISOString(),
         })));
@@ -186,15 +193,15 @@ function ClientWalletContent() {
     }
   }, [sendPhone]);
 
-  const sendAmountInUSD = primaryCurrency === "DOP" ? sendAmountUSD / rateDOP : sendAmountUSD;
+  const sendAmountInUSD = primaryCurrency === "DOP" ? sendAmountUSD / rateDOP : primaryCurrency === "HTG" ? sendAmountUSD / rateHTG : sendAmountUSD;
   const sendFeeUSD = Math.round(sendAmountInUSD * (feePercent / 100) * 100) / 100;
-  const sendFeeSource = primaryCurrency === "DOP" ? Math.round(sendFeeUSD * rateDOP * 100) / 100 : sendFeeUSD;
+  const sendFeeSource = Math.round(sendAmountUSD * (feePercent / 100) * 100) / 100;
   const totalSendUSD = sendAmountUSD;
-  const receiveHTG = Math.round((sendAmountInUSD - sendFeeUSD) * rateHTG);
-  const walletSymbol = primaryCurrency === "DOP" ? "RD$" : "US$";
+  const receiveHTG = Math.round(primaryCurrency === "DOP" ? (sendAmountUSD - sendFeeSource) * rateDOPToHTG : primaryCurrency === "HTG" ? sendAmountUSD - sendFeeSource : (sendAmountInUSD - sendFeeUSD) * rateHTG);
+  const walletSymbol = primaryCurrency === "DOP" ? "RD$" : primaryCurrency === "HTG" ? "G" : "US$";
   const formatWallet = (value: number) => `${walletSymbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${primaryCurrency}`;
-  const walletBalanceUSD = primaryCurrency === "DOP" ? balances.walletBalance / rateDOP : balances.walletBalance;
-  const savingsBalanceUSD = primaryCurrency === "DOP" ? balances.savingsBalance / rateDOP : balances.savingsBalance;
+  const walletBalanceUSD = primaryCurrency === "DOP" ? balances.walletBalance / rateDOP : primaryCurrency === "HTG" ? balances.walletBalance / rateHTG : balances.walletBalance;
+  const savingsBalanceUSD = primaryCurrency === "DOP" ? balances.savingsBalance / rateDOP : primaryCurrency === "HTG" ? balances.savingsBalance / rateHTG : balances.savingsBalance;
 
   const handleSendRemittance = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,6 +254,27 @@ function ClientWalletContent() {
       toast({ variant: "destructive", title: "Error al enviar remesa", description: error instanceof Error ? error.message : "Error inesperado" });
       await refreshData();
     } finally { setSendProcessing(false); }
+  };
+
+  const redeemBenefits = async () => {
+    if (!user || benefitAccruedDOP <= 0 || benefitRedeeming) return;
+    setBenefitRedeeming(true);
+    try {
+      const response = await fetch('/api/mobile/benefits/redeem', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo canjear el beneficio');
+      setBenefitAccruedDOP(0);
+      setBalances((current) => ({ ...current, walletBalance: Number(data.walletBalance ?? current.walletBalance) }));
+      toast({ title: 'Beneficios canjeados', description: `El monto fue agregado a tu billetera ${data.redemption?.primaryCurrency || primaryCurrency} y quedó registrado en el historial.` });
+      await refreshData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'No se pudo completar el canje', description: error instanceof Error ? error.message : 'Error inesperado' });
+    } finally {
+      setBenefitRedeeming(false);
+    }
   };
 
   // --- FORM STATE: DEPOSIT AT SUB-AGENT ---
@@ -451,7 +479,7 @@ function ClientWalletContent() {
                 {walletSymbol}{balances.walletBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-blue-300">{primaryCurrency}</span>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[11px] text-blue-200/90 font-medium">
-                <span>≈ RD$ {(primaryCurrency === "DOP" ? balances.walletBalance : balances.walletBalance * rateDOP).toLocaleString("en-US", { maximumFractionDigits: 2 })} DOP</span>
+                <span>≈ RD$ {(walletBalanceUSD * rateDOP).toLocaleString("en-US", { maximumFractionDigits: 2 })} DOP · G {(walletBalanceUSD * rateHTG).toLocaleString("en-US", { maximumFractionDigits: 2 })} HTG</span>
                 <span>•</span>
                 <span>≈ {(walletBalanceUSD * rateHTG).toLocaleString("en-US", { maximumFractionDigits: 0 })} HTG (MonCash/Natcash)</span>
               </div>
@@ -535,14 +563,19 @@ function ClientWalletContent() {
           </CardContent>
         </Card>
 
-        {benefitRatePercent > 0 && (
+        {(benefitRatePercent > 0 || benefitAccruedDOP > 0) && (
           <Card className="lg:col-span-9 border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 shadow-sm">
             <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-amber-800">Beneficio acumulado</p>
                 <p className="text-sm text-amber-950">Recibes {benefitRatePercent.toFixed(2)}% por tus remesas completadas.</p>
               </div>
-              <div className="text-2xl font-black text-amber-900">RD$ {benefitAccruedDOP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="flex flex-col sm:items-end gap-2">
+                <div className="text-2xl font-black text-amber-900">RD$ {benefitAccruedDOP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <Button type="button" size="sm" onClick={redeemBenefits} disabled={benefitAccruedDOP <= 0 || benefitRedeeming} className="bg-amber-700 hover:bg-amber-800 text-white gap-2">
+                  <Coins className="w-4 h-4" /> {benefitRedeeming ? 'Canjeando…' : 'Convertir en balance'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -746,7 +779,7 @@ function ClientWalletContent() {
 
                     {/* Quick amount pills */}
                     <div className="flex flex-wrap gap-1.5 pt-1">
-                      {(primaryCurrency === "DOP" ? [500, 1000, 2500, 5000, 10000] : [15, 25, 50, 75, 100]).map((amt) => (
+                      {(primaryCurrency === "USD" ? [15, 25, 50, 75, 100] : [500, 1000, 2500, 5000, 10000]).map((amt) => (
                         <button
                           key={amt}
                           type="button"
@@ -774,7 +807,8 @@ function ClientWalletContent() {
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>Tasa de cambio del día:</span>
-                      <span className="font-bold text-slate-900">1 USD = {rateHTG.toFixed(2)} HTG</span>
+                      <span className="font-bold text-slate-900">{primaryCurrency === "DOP" ? `RD$1 = ${rateDOPToHTG.toFixed(3)} HTG` : primaryCurrency === "HTG" ? "G1 = 1 HTG" : `1 USD = ${rateHTG.toFixed(2)} HTG`}</span>
+                      <span className="block text-[11px] text-muted-foreground">Tasa HispaniolaPay USD/DOP: RD${rateDOP.toFixed(4)}</span>
                     </div>
                     <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50/80 p-2 rounded-lg border border-emerald-200/60">
                       <span>Recibe en Haití ({sendOperator}):</span>
@@ -1259,7 +1293,7 @@ function ClientWalletContent() {
 
                             <TableCell className="font-mono font-black">
                               <span className={isIncome ? "text-emerald-600" : isOut ? "text-red-600" : "text-blue-600"}>
-                                {isIncome ? "+" : isOut ? "-" : ""}{mov.currency === "DOP" ? "RD$" : "US$"}{Number(mov.amount ?? mov.amountUSD).toFixed(2)} {mov.currency || "USD"}
+                                {isIncome ? "+" : isOut ? "-" : ""}{mov.currency === "DOP" ? "RD$" : mov.currency === "HTG" ? "G" : "US$"}{Number(mov.amount ?? mov.amountUSD).toFixed(2)} {mov.currency || "USD"}
                               </span>
                             </TableCell>
 
@@ -1567,7 +1601,7 @@ function ClientWalletContent() {
                   </div>
                   <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold">
                     <span>Monto Total:</span>
-                    <span className="text-primary">{selectedReceiptMovement.currency === "DOP" ? "RD$" : "US$"}{Number(selectedReceiptMovement.amount ?? selectedReceiptMovement.amountUSD).toFixed(2)} {selectedReceiptMovement.currency || "USD"}</span>
+                    <span className="text-primary">{selectedReceiptMovement.currency === "DOP" ? "RD$" : selectedReceiptMovement.currency === "HTG" ? "G" : "US$"}{Number(selectedReceiptMovement.amount ?? selectedReceiptMovement.amountUSD).toFixed(2)} {selectedReceiptMovement.currency || "USD"}</span>
                   </div>
                 </div>
               </div>

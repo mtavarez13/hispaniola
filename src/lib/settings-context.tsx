@@ -85,6 +85,7 @@ export const DEFAULT_OFFICIAL_BANK_ACCOUNTS: OfficialBankAccount[] = [
 const DEFAULT_SETTINGS: SystemSettings = {
   publicRateDOP: 58.50,
   publicRateHTG: 132.20,
+  publicRateDOPToHTG: 2.03,
   publicRateUSD: 1.00,
   haitiPublicFeePercent: 8.0,
   haitiBencashSharePercent: 3.0,
@@ -330,6 +331,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           updatedBy: updatedByEmail,
           publicRateDOP: updated.publicRateDOP,
           publicRateHTG: updated.publicRateHTG,
+          publicRateDOPToHTG: updated.publicRateDOPToHTG,
           agentRateDOP: updated.agentRateDOP,
           agentRateHTG: updated.agentRateHTG,
           agentPayoutPercentage: updated.agentPayoutPercentage,

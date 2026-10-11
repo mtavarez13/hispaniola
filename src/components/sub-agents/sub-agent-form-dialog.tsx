@@ -51,6 +51,7 @@ const DEFAULT_MODULES: SubAgentModules = {
   mobileTopups: true,
   accounting: false,
   reports: true,
+  thermalReceipts: false,
 };
 
 export function SubAgentFormDialog({
@@ -78,6 +79,7 @@ export function SubAgentFormDialog({
   const [localCurrency, setLocalCurrency] = useState<"DOP" | "HTG" | "USD">("DOP");
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [creditLimit, setCreditLimit] = useState<number>(0);
+  const [accountMode, setAccountMode] = useState<"prepaid" | "postpaid">("prepaid");
 
   // Ubicación
   const [country, setCountry] = useState<"DO" | "HT">("DO");
@@ -110,6 +112,7 @@ export function SubAgentFormDialog({
       setLocalCurrency(subAgentToEdit.localCurrency || "DOP");
       setWalletBalance(subAgentToEdit.walletBalance ?? 0);
       setCreditLimit(subAgentToEdit.creditLimit ?? 0);
+      setAccountMode(subAgentToEdit.accountMode === "postpaid" ? "postpaid" : "prepaid");
 
       if (subAgentToEdit.location) {
         setCountry(subAgentToEdit.location.country || "DO");
@@ -124,7 +127,7 @@ export function SubAgentFormDialog({
         }
       }
 
-      setModules(subAgentToEdit.modules || DEFAULT_MODULES);
+      setModules({ ...DEFAULT_MODULES, ...(subAgentToEdit.modules || {}) });
       setNotes(subAgentToEdit.notes || "");
     } else {
       // Reset to fresh form
@@ -142,6 +145,7 @@ export function SubAgentFormDialog({
       setLocalCurrency("DOP");
       setWalletBalance(0);
       setCreditLimit(0);
+      setAccountMode("prepaid");
 
       setCountry("DO");
       setProvince("Distrito Nacional");
@@ -239,6 +243,7 @@ export function SubAgentFormDialog({
       localCurrency,
       walletBalance: Number(walletBalance) || 0,
       creditLimit: Number(creditLimit) || 0,
+      accountMode,
       location: locationData,
       modules,
       notes,
@@ -522,6 +527,18 @@ export function SubAgentFormDialog({
               </div>
 
               {/* Fondo operativo y Límites */}
+              <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-2">
+                <Label className="text-xs font-bold text-foreground">Modalidad de cuenta operativa</Label>
+                <Select value={accountMode} onValueChange={(value: "prepaid" | "postpaid") => setAccountMode(value)}>
+                  <SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="prepaid">Prepago · opera únicamente con balance recargado</SelectItem>
+                    <SelectItem value="postpaid">Pospago · opera con fondos de HispaniolaPay</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">{accountMode === "prepaid" ? "El subagente debe recibir una recarga antes de realizar operaciones." : "Las operaciones consumen el balance de la cuenta principal de HispaniolaPay y quedan registradas como consumo pospago."}</p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
