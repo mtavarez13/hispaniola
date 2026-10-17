@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Bell, LogOut, User, EyeOff, Eye, Maximize2, Settings } from "lucide-react"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
+import { RemotePrintStation } from "@/components/printing/remote-print-station"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -143,6 +144,7 @@ export default function DashboardLayout({
           <SidebarTransactionController />
           
           <div className="flex items-center gap-3">
+             <RemotePrintStation />
              <LanguageSwitcher />
              <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-primary">
                <Bell className="w-5 h-5" />

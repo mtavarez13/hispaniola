@@ -92,7 +92,14 @@ final class ThermalReceiptManager {
         if (!ensureBluetoothPermission()) return;
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         if (adapter == null || !adapter.isEnabled()) { toast("Activa Bluetooth y vincula primero la impresora desde Ajustes del teléfono."); return; }
-        Set<BluetoothDevice> bonded = adapter.getBondedDevices();
+        Set<BluetoothDevice> bonded;
+        try {
+            bonded = adapter.getBondedDevices();
+        } catch (SecurityException denied) {
+            activity.requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_PERMISSION_REQUEST);
+            toast("Autoriza dispositivos cercanos y vuelve a seleccionar la impresora.");
+            return;
+        }
         if (bonded == null || bonded.isEmpty()) { toast("No hay impresoras vinculadas. Vincúlala en Ajustes > Bluetooth."); return; }
         List<BluetoothDevice> devices = new ArrayList<>(bonded);
         String[] labels = new String[devices.size()];

@@ -96,7 +96,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   agentReceptionFeeUSD: 1.50,
   agentPayoutPercentage: 2.0,
   platformFeePercentage: 5.0,
-  bencashBaseUrl: "https://reseller.test.bencashgroup.com",
+  bencashBaseUrl: "https://reseller.bencashgroup.com/api/",
   bencashPrivateKey: "",
   moncashActive: true,
   natcashActive: true,

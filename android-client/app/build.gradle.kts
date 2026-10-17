@@ -11,10 +11,12 @@ android {
         applicationId = "com.hispaniolapay.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "2.21.1-catalogo-logos"
+        versionCode = 33
+        versionName = "2.25.0-optimizada"
 
-        val defaultAppUrl = "https://hispaniolapay.com"
+        // The Android client talks to the stable Firebase backend. Private
+        // provider credentials remain server-side and are never packaged here.
+        val defaultAppUrl = "https://studio-4779362907-870c5.web.app"
         val appUrl = providers.gradleProperty("HISPANIOLA_APP_URL").orElse(defaultAppUrl).get()
         buildConfigField("String", "APP_URL", "\"$appUrl\"")
         buildConfigField("String", "FIREBASE_API_KEY", "\"AIzaSyBkV_WnRauCZKhjVirr8g_rv1j6GBi0dA8\"")

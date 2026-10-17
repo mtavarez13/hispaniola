@@ -132,7 +132,7 @@ export function resolveChannelEndpoint(
   baseUrl: string,
   action: 'requestcashin' | 'confirmcashin' | 'balance'
 ): string {
-  let clean = (baseUrl || 'https://reseller.test.bencashgroup.com').trim().replace(/\/+$/, '');
+  let clean = (baseUrl || BENCASH_DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
 
   if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
     clean = `https://${clean}`;
@@ -320,8 +320,8 @@ export function getLinkedTxMeta(txId: string): LinkedTxMetadata | undefined {
 /**
  * Clase modular para la integración con la API de Depósito de Bencash Group
  * Panel Oficial: https://sellertest.bencashgroup.com
- * API Base URL: https://reseller.test.bencashgroup.com
- * Swagger Oficial: https://reseller.test.bencashgroup.com/swagger/index.html
+ * API Base URL de producción: https://reseller.bencashgroup.com/api/
+ * Swagger Oficial: https://reseller.bencashgroup.com/swagger/index.html
  */
 export class BencashDepositService {
   private static runtimeBaseUrl: string | null = null;
@@ -338,7 +338,7 @@ export class BencashDepositService {
 
   public static getRuntimeCredentials() {
     const serverConfig = getBencashServerConfig();
-    const effectiveBase = BencashDepositService.runtimeBaseUrl || serverConfig.baseUrl || 'https://reseller.test.bencashgroup.com';
+    const effectiveBase = BencashDepositService.runtimeBaseUrl || serverConfig.baseUrl || BENCASH_DEFAULT_BASE_URL;
     const effectiveKey = (BencashDepositService.runtimePrivateKey !== null ? BencashDepositService.runtimePrivateKey : serverConfig.privateKey) || '';
     return {
       baseUrl: effectiveBase,
@@ -356,7 +356,7 @@ export class BencashDepositService {
       BencashDepositService.runtimeBaseUrl ||
       serverConfig.baseUrl ||
       process.env.BENCASH_BASE_URL ||
-      'https://reseller.test.bencashgroup.com'
+      BENCASH_DEFAULT_BASE_URL
     ).replace(/\/+$/, '');
 
     const candidateKey =
@@ -1173,7 +1173,7 @@ export class BencashDepositService {
     timeoutMs?: number;
   }): Promise<PingDiagnosticResult> {
     const startTime = Date.now();
-    const rawBaseUrl = (options?.baseUrl || this.baseUrl || 'https://reseller.test.bencashgroup.com').trim();
+    const rawBaseUrl = (options?.baseUrl || this.baseUrl || BENCASH_DEFAULT_BASE_URL).trim();
     const key = options?.privateKey || this.privateKey;
     const timeoutMs = options?.timeoutMs || 15000;
 

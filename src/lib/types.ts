@@ -19,6 +19,8 @@ export interface UserProfile {
   phone?: string;
   idNumber?: string; // Cédula o Pasaporte
   clientCode?: string; // Código único de cliente para depósitos en sub-agentes (e.g. CLI-8942)
+  thermalReceiptsEnabled?: boolean;
+  receiptPaperWidthMm?: 58 | 78;
 }
 
 export interface ClientDepositRecord {

@@ -3,10 +3,10 @@ import crypto from 'crypto';
 /**
  * URLs Oficiales de Bencash Group (Deposit Channel API)
  * - Panel Seller (para balance, recargas y transacciones): https://sellertest.bencashgroup.com
- * - URL Base del API: https://reseller.test.bencashgroup.com
+ * - URL Base de producción: https://reseller.bencashgroup.com/api/
  */
 export const BENCASH_OFFICIAL_PANEL_URL = 'https://sellertest.bencashgroup.com';
-export const BENCASH_DEFAULT_BASE_URL = 'https://reseller.test.bencashgroup.com';
+export const BENCASH_DEFAULT_BASE_URL = 'https://reseller.bencashgroup.com/api/';
 
 export interface BencashClientConfig {
   baseUrl?: string;

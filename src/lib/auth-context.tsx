@@ -27,7 +27,6 @@ interface AuthContextType {
     name: string, 
     email: string, 
     pass: string, 
-    role?: UserRole, 
     country?: string,
     phone?: string,
     idNumber?: string
@@ -120,13 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const cleanEmail = (firebaseUser.email || "").toLowerCase().trim();
     const isPrimaryAdmin = cleanEmail === "martin.tavarez.gomez@gmail.com";
 
-    const computedRole: UserRole =
-      extraData?.role ||
-      (cleanEmail.includes("admin") || cleanEmail === "martin.tavarez.gomez@gmail.com"
-        ? "admin"
-        : cleanEmail.includes("cliente") || cleanEmail.includes("client")
-        ? "customer"
-        : "agent");
+    // Public registration and first-time Google access always create a customer.
+    // Existing roles are read from Firestore; only the protected admin APIs may
+    // promote a customer to agent or administrator.
+    const computedRole: UserRole = isPrimaryAdmin ? "admin" : "customer";
 
     // 1. Check local storage cache first for instant display
     let existingProfile: UserProfile | null = null;
@@ -391,7 +387,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string,
     email: string,
     pass: string,
-    role: UserRole = "customer",
     country: string = "DO",
     phone?: string,
     idNumber?: string
@@ -400,7 +395,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await createUserWithEmailAndPassword(auth, email, pass);
       if (res.user) {
         localStorage.removeItem("hispaniolapay_auth_user");
-        await fetchOrCreateProfile(res.user, { name, role, country, phone, idNumber });
+        await fetchOrCreateProfile(res.user, { name, role: "customer", country, phone, idNumber });
       }
     } catch (error: any) {
       console.warn("Firebase email register note:", error?.code || error?.message);
@@ -424,7 +419,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             })
           );
         } catch (_) {}
-        await fetchOrCreateProfile(fallbackUser, { name, role, country, phone, idNumber });
+        await fetchOrCreateProfile(fallbackUser, { name, role: "customer", country, phone, idNumber });
         return;
       }
 

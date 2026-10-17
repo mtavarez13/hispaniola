@@ -34,6 +34,10 @@ let cachedWhatsApp: WhatsAppServerConfig | null = null;
 
 const BENCASH_CONFIG_DOCUMENT = adminDb.collection('server_config').doc('bencash');
 const WHATSAPP_CONFIG_DOCUMENT = adminDb.collection('server_config').doc('whatsapp');
+const DEFAULT_BENCASH_BASE_URL = 'https://reseller.bencashgroup.com/api/';
+
+const normalizeBencashBaseUrl = (value: string | undefined) =>
+  `${(value || DEFAULT_BENCASH_BASE_URL).trim().replace(/\/+$/, '')}/`;
 
 /**
  * Obtiene la configuración de BenCash asegurando persistencia en servidor
@@ -52,7 +56,7 @@ export function getBencashServerConfig(): BencashServerConfig {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
           cachedBencash = {
-            baseUrl: (parsed.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com').trim().replace(/\/+$/, ''),
+            baseUrl: normalizeBencashBaseUrl(parsed.baseUrl || process.env.BENCASH_BASE_URL),
             privateKey: (parsed.privateKey || process.env.BENCASH_PRIVATE_KEY || '').trim(),
           };
           return cachedBencash;
@@ -65,7 +69,7 @@ export function getBencashServerConfig(): BencashServerConfig {
 
   // Fallback a variables de entorno
   cachedBencash = {
-    baseUrl: (process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com').trim().replace(/\/+$/, ''),
+    baseUrl: normalizeBencashBaseUrl(process.env.BENCASH_BASE_URL),
     privateKey: (process.env.BENCASH_PRIVATE_KEY || '').trim(),
   };
 
@@ -78,7 +82,7 @@ export function getBencashServerConfig(): BencashServerConfig {
 export function saveBencashServerConfig(config: Partial<BencashServerConfig>): BencashServerConfig {
   const current = getBencashServerConfig();
   const updated: BencashServerConfig = {
-    baseUrl: (config.baseUrl !== undefined ? config.baseUrl : current.baseUrl).trim().replace(/\/+$/, ''),
+    baseUrl: normalizeBencashBaseUrl(config.baseUrl !== undefined ? config.baseUrl : current.baseUrl),
     privateKey: config.privateKey !== undefined ? config.privateKey.trim() : current.privateKey,
   };
 

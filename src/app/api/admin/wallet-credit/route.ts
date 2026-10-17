@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin';
 import { adminAuthError, requireAdmin } from '@/lib/server-auth';
 import { createAndPushMobileNotification } from '@/lib/mobile-notifications';
 import { currencySymbol, fromUsd, getEffectiveRates, normalizeWalletCurrency } from '@/lib/currency';
+import { proxyAdministrativeRequestToFirebase } from '@/lib/firebase-backend-proxy';
 
 function money(value: number) { return Math.round(value * 100) / 100; }
 
@@ -20,6 +21,9 @@ async function findClient(identifier: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     const admin = await requireAdmin(req);
     const body = await req.json();
@@ -37,11 +41,13 @@ export async function POST(req: NextRequest) {
 
     const creditId = idempotencyKey || `credit_${Date.now()}`;
     const movementRef = client.ref.collection('wallet_movements').doc(creditId);
+    const ledgerRef = adminDb.collection('accounting_ledger').doc(`wallet_credit_${client.id}_${creditId}`);
+    const operationsRef = adminDb.collection('settings').doc('operations');
     const ratesRef = adminDb.collection('settings').doc('rates');
     const ratesDocument = await ratesRef.get();
     const effectiveRates = await getEffectiveRates(ratesDocument.data() || {});
     const result = await adminDb.runTransaction(async (transaction) => {
-      const [profileSnapshot, existingMovement] = await Promise.all([transaction.get(client.ref), transaction.get(movementRef)]);
+      const [profileSnapshot, existingMovement, operationsSnapshot] = await Promise.all([transaction.get(client.ref), transaction.get(movementRef), transaction.get(operationsRef)]);
       if (existingMovement.exists) return { duplicate: true, ...(existingMovement.data() || {}) };
       const profile = profileSnapshot.data() || {};
       const primaryCurrency = normalizeWalletCurrency(profile.primaryCurrency);
@@ -55,18 +61,29 @@ export async function POST(req: NextRequest) {
         previousBalance, newBalance, status: 'completed', referenceId: creditId,
         createdAt: FieldValue.serverTimestamp(), createdAtIso: new Date().toISOString(), creditedBy: admin.email,
       });
+      const operations = operationsSnapshot.data() || {};
+      transaction.set(ledgerRef, {
+        type: 'user_wallet_credit', direction: 'neutral', amountDOP: money(amountUSD * effectiveRates.usdToDop),
+        targetUid: client.id, targetName: String(profile.name || ''), targetEmail: String(profile.email || ''),
+        creditedAmount, creditedCurrency: primaryCurrency, targetPocket, affectsProviderBalance: false,
+        remittanceBalanceDOP: money(Number(operations.principalBalanceDOP ?? operations.currentOperatingBalanceDOP ?? 0)),
+        rechargeServicesBalanceDOP: money(Number(operations.rechargeServicesBalanceDOP || 0)),
+        description: `${notes} · no descuenta fondos proveedores`, performedBy: admin.email,
+        createdAt: FieldValue.serverTimestamp(),
+      });
       return { duplicate: false, previousBalance, newBalance, creditedAmount, primaryCurrency };
     });
 
+    const resultCurrency = normalizeWalletCurrency(result.primaryCurrency);
     if (!result.duplicate) {
       await createAndPushMobileNotification(client.id, {
         title: 'Depósito acreditado',
-        body: `Recibiste +${currencySymbol(result.primaryCurrency)}${Number(result.creditedAmount).toFixed(2)} en ${targetPocket === 'savings' ? 'tu ahorro' : 'tu billetera'}. Nuevo saldo: ${currencySymbol(result.primaryCurrency)}${Number(result.newBalance).toFixed(2)}.`,
+        body: `Recibiste +${currencySymbol(resultCurrency)}${Number(result.creditedAmount).toFixed(2)} en ${targetPocket === 'savings' ? 'tu ahorro' : 'tu billetera'}. Nuevo saldo: ${currencySymbol(resultCurrency)}${Number(result.newBalance).toFixed(2)}.`,
         type: 'deposit', amountUSD, referenceId: creditId,
       });
     }
 
-    return NextResponse.json({ success: true, duplicate: result.duplicate, creditId, userId: client.id, newBalance: Number(result.newBalance), primaryCurrency: result.primaryCurrency });
+    return NextResponse.json({ success: true, duplicate: result.duplicate, creditId, userId: client.id, newBalance: Number(result.newBalance), primaryCurrency: resultCurrency });
   } catch (error) {
     const authError = adminAuthError(error);
     return NextResponse.json({ success: false, error: authError.message }, { status: authError.status });

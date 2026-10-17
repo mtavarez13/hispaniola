@@ -415,7 +415,7 @@ export default function SubAgentsPage() {
             )}
           </div>
           <p className="text-muted-foreground mt-1 text-sm">
-            Administre los establecimientos autorizados, configure su tasa de beneficios (%), moneda local, ubicación GPS y módulos asignados.
+            Administre los establecimientos autorizados, configure su beneficio exclusivo para remesas, moneda local, ubicación GPS y módulos asignados. Los demás servicios se controlan desde Contabilidad.
           </p>
         </div>
 
@@ -553,7 +553,7 @@ export default function SubAgentsPage() {
           <CardContent className="p-5 flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Tasa Beneficio Promedio
+                Beneficio promedio · Remesas
               </p>
               <h3 className="text-2xl font-black text-accent mt-1">
                 {stats.avgCommission}%
@@ -674,7 +674,7 @@ export default function SubAgentsPage() {
                 <TableRow className="text-xs">
                   <TableHead className="font-bold">Sub-Agente / ID</TableHead>
                   <TableHead className="font-bold">Responsable & Contacto</TableHead>
-                  <TableHead className="font-bold">Tasa Beneficio (%)</TableHead>
+                  <TableHead className="font-bold">Beneficio Remesas (%)</TableHead>
                   <TableHead className="font-bold">Moneda Local & Balance</TableHead>
                   <TableHead className="font-bold">Ubicación & GPS</TableHead>
                   <TableHead className="font-bold">Módulos Habilitados</TableHead>
@@ -735,7 +735,7 @@ export default function SubAgentsPage() {
                             <span>{sa.commissionRatePercent.toFixed(2)}%</span>
                           </div>
                           <div className="text-[10px] text-muted-foreground mt-0.5">
-                            Margen por operación
+                            Exclusivo de remesas
                           </div>
                         </TableCell>
 

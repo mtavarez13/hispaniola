@@ -5,20 +5,25 @@ import {
   savePersistentBencashServerConfig,
 } from '@/lib/server-config';
 import { adminAuthError, requireAdmin } from '@/lib/server-auth';
+import { proxyAdministrativeRequestToFirebase } from '@/lib/firebase-backend-proxy';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
   await requireAdmin(req, { requireSettings: true });
   const serverConfig = await getPersistentBencashServerConfig();
   const runtime = BencashDepositService.getRuntimeCredentials();
-  const currentBaseUrl = runtime.baseUrl || serverConfig.baseUrl || 'https://reseller.test.bencashgroup.com';
+  const currentBaseUrl = runtime.baseUrl || serverConfig.baseUrl || 'https://reseller.bencashgroup.com/api/';
+  const displayBaseUrl = `${currentBaseUrl.replace(/\/+$/, '')}/`;
   const currentKey = (runtime.privateKey !== null ? runtime.privateKey : serverConfig.privateKey) || '';
 
   return NextResponse.json({
     success: true,
-    baseUrl: currentBaseUrl,
+    baseUrl: displayBaseUrl,
     hasPrivateKey: Boolean(currentKey && currentKey.trim().length > 0),
     maskedKey: currentKey ? `${currentKey.slice(0, 4)}••••••••${currentKey.slice(-4)}` : '',
     privateKey: currentKey, // Permite recargar en el formulario si el usuario refresca
@@ -30,6 +35,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     await requireAdmin(req, { requireSettings: true });
     const body = await req.json();
@@ -46,7 +54,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Configuración de BenCash guardada permanentemente en Firestore',
-      baseUrl: saved.baseUrl,
+      baseUrl: `${saved.baseUrl.replace(/\/+$/, '')}/`,
       hasPrivateKey: Boolean(saved.privateKey && saved.privateKey.length > 0),
     });
   } catch (err: any) {

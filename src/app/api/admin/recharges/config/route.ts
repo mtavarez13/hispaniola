@@ -3,10 +3,14 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { adminAuthError, requireAdmin } from '@/lib/server-auth';
 import { getRecargasConfig, saveRecargasConfig, verifyRecargasConnection } from '@/lib/recargas-dominicanas';
+import { proxyAdministrativeRequestToFirebase } from '@/lib/firebase-backend-proxy';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     await requireAdmin(req, { requireSettings: true });
     const [config, catalog] = await Promise.all([
@@ -36,6 +40,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     const admin = await requireAdmin(req, { requireSettings: true });
     const body = await req.json();

@@ -973,7 +973,7 @@ export default function HaitiRemittancesPage() {
   const handleSaveConfig = async () => {
     setSavingConfig(true)
     try {
-      const cleanUrl = (baseUrlInput.trim() || "https://reseller.test.bencashgroup.com").replace(/\/+$/, "")
+      const cleanUrl = `${(baseUrlInput.trim() || "https://reseller.bencashgroup.com/api/").replace(/\/+$/, "")}/`
       const cleanKey = privateKeyInput.trim()
       const [settingsSaved, serverResponse] = await Promise.all([
         updateSettings({
@@ -1022,7 +1022,7 @@ export default function HaitiRemittancesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          baseUrl: baseUrlInput.trim() || "https://reseller.test.bencashgroup.com",
+          baseUrl: baseUrlInput.trim() || "https://reseller.bencashgroup.com/api/",
           privateKey: privateKeyInput.trim() || undefined,
         }),
       })
@@ -1066,7 +1066,7 @@ export default function HaitiRemittancesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          baseUrl: baseUrlInput.trim() || "https://reseller.test.bencashgroup.com",
+          baseUrl: baseUrlInput.trim() || "https://reseller.bencashgroup.com/api/",
           privateKey: privateKeyInput.trim() || undefined,
           toAccountNumber: phone,
           amount: amountUSD * (settings?.haitiExchangeRate || 125.57),
@@ -2532,17 +2532,17 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                 <div className="p-3 bg-secondary/40 rounded-xl space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[11px] font-bold text-primary">Servidor Recomendado BenCash:</span>
-                    <span className="text-[10px] text-muted-foreground">Test Endpoint</span>
+                    <span className="text-[10px] text-muted-foreground">Producción</span>
                   </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBaseUrlInput("https://reseller.test.bencashgroup.com")}
+                    onClick={() => setBaseUrlInput("https://reseller.bencashgroup.com/api/")}
                     className="w-full text-xs bg-white hover:bg-blue-50 border-blue-200 text-blue-800 font-semibold justify-start gap-2 shadow-sm"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                    https://reseller.test.bencashgroup.com
+                    https://reseller.bencashgroup.com/api/
                   </Button>
                 </div>
 
@@ -2554,7 +2554,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                     id="baseUrl"
                     value={baseUrlInput}
                     onChange={(e) => setBaseUrlInput(e.target.value)}
-                    placeholder="https://reseller.test.bencashgroup.com"
+                    placeholder="https://reseller.bencashgroup.com/api/"
                     className="text-xs font-mono"
                   />
                   <p className="text-[10px] text-muted-foreground">

@@ -85,6 +85,11 @@ final class ApiClient {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/benefits/redeem", "POST", new JSONObject(), 30000);
     }
 
+    JSONObject benefitHistory(String from, String to) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/benefits?from="
+                + URLEncoder.encode(from, "UTF-8") + "&to=" + URLEncoder.encode(to, "UTF-8"), "GET", null, 30000);
+    }
+
     JSONObject rechargeProducts() throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/recharges?action=products", "GET", null, 30000);
     }
@@ -101,6 +106,15 @@ final class ApiClient {
 
     JSONObject submitRecharge(JSONObject payload) throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/recharges", "POST", payload, 65000);
+    }
+
+    JSONObject rechargeHistory() throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/recharges?action=my_history", "GET", null, 30000);
+    }
+
+    JSONObject cancelRecharge(String transactionId) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/recharges", "DELETE",
+                new JSONObject().put("transactionId", transactionId), 45000);
     }
 
     JSONObject deposits() throws Exception {
@@ -202,7 +216,7 @@ final class ApiClient {
         connection.setConnectTimeout(18000);
         connection.setReadTimeout(timeout);
         connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("User-Agent", "HispaniolaPay-Android/2.0");
+        connection.setRequestProperty("User-Agent", "HispaniolaPay-Android/" + BuildConfig.VERSION_NAME);
         if (token != null && !token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
         if (payload != null) {
             connection.setDoOutput(true);

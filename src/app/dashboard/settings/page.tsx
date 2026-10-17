@@ -95,7 +95,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (settings && !hasLoadedInitial) {
-      setBencashBaseUrl(settings.bencashBaseUrl || "https://reseller.test.bencashgroup.com")
+      setBencashBaseUrl(settings.bencashBaseUrl || "https://reseller.bencashgroup.com/api/")
       setBencashPrivateKey(settings.bencashPrivateKey || "")
       setWaEnabled(settings.whatsappApiEnabled ?? false)
       setWaProvider(settings.whatsappProvider === 'direct_web' ? 'direct_web' : 'cloud_api')
@@ -110,6 +110,30 @@ export default function SettingsPage() {
       setHasLoadedInitial(true)
     }
   }, [settings, hasLoadedInitial])
+
+  // Firestore client settings are not the source of truth for provider
+  // secrets. Load the durable server configuration with the admin token.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    void user.getIdToken().then(async (idToken) => {
+      const response = await fetch('/api/bencash/config', {
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || 'No se pudo cargar la configuración de BenCash.')
+      }
+      if (!cancelled) {
+        setBencashBaseUrl(data.baseUrl || 'https://reseller.bencashgroup.com/api/')
+        setBencashPrivateKey(data.privateKey || '')
+      }
+    }).catch((error) => {
+      if (!cancelled) console.warn('No se pudo cargar BenCash desde el servidor:', error)
+    })
+    return () => { cancelled = true }
+  }, [user])
 
   // Guardar configuración de WhatsApp
   const handleSaveWhatsApp = async () => {
@@ -254,7 +278,7 @@ export default function SettingsPage() {
   // Save BenCash settings
   const handleSaveBenCash = async () => {
     setSavingBenCash(true)
-    const cleanUrl = (bencashBaseUrl.trim() || "https://reseller.test.bencashgroup.com").replace(/\/+$/, "")
+    const cleanUrl = `${(bencashBaseUrl.trim() || "https://reseller.bencashgroup.com/api/").replace(/\/+$/, "")}/`
     const cleanKey = bencashPrivateKey.trim()
 
     // 1. Guardar en SettingsContext (persistencia en React State, localStorage y Firestore)
@@ -267,26 +291,35 @@ export default function SettingsPage() {
       "Actualización de API Key y URL BenCash"
     )
 
-    // 2. Sincronizar directamente con el endpoint de configuración del servidor Next.js
     try {
       const idToken = await user?.getIdToken()
-      await fetch("/api/bencash/config", {
+      if (!idToken) throw new Error('La sesión administrativa no está disponible.')
+      const response = await fetch("/api/bencash/config", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ baseUrl: cleanUrl, privateKey: cleanKey }),
       })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || 'El servidor no confirmó el guardado de BenCash.')
+      }
+      if (!success) throw new Error('No se pudo actualizar la configuración general.')
+      setBencashBaseUrl(data.baseUrl || cleanUrl)
+      const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      setLastSaved(nowStr)
+      toast({
+        title: "✓ Configuración Guardada",
+        description: `La API Key y la URL base quedaron guardadas permanentemente.`,
+      })
     } catch (err) {
-      console.warn("Error en sincronización directa de servidor:", err)
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar BenCash',
+        description: err instanceof Error ? err.message : 'Error del servidor',
+      })
+    } finally {
+      setSavingBenCash(false)
     }
-
-    setSavingBenCash(false)
-    const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    setLastSaved(nowStr)
-
-    toast({
-      title: "✓ Configuración Guardada",
-      description: `La API Key y la URL base se han guardado con éxito.`,
-    })
   }
 
   const handleCopy = (text: string, type: "url" | "key") => {
@@ -315,7 +348,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          baseUrl: bencashBaseUrl.trim() || "https://reseller.test.bencashgroup.com",
+          baseUrl: bencashBaseUrl.trim() || "https://reseller.bencashgroup.com/api/",
           privateKey: bencashPrivateKey.trim() || undefined,
         }),
       })
@@ -550,10 +583,10 @@ export default function SettingsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => handleApplyPreset("https://api.bencash.com")}
+                    onClick={() => handleApplyPreset("https://reseller.bencashgroup.com/api/")}
                     className="text-xs bg-white hover:bg-gray-50 text-muted-foreground"
                   >
-                    Servidor Producción (api.bencash.com)
+                    Producción: reseller.bencashgroup.com/api/
                   </Button>
                 </div>
               </div>
@@ -582,7 +615,7 @@ export default function SettingsPage() {
                       id="endpoint-url"
                       value={bencashBaseUrl}
                       onChange={(e) => setBencashBaseUrl(e.target.value)}
-                      placeholder="https://reseller.test.bencashgroup.com"
+                      placeholder="https://reseller.bencashgroup.com/api/"
                       className="font-mono text-xs bg-white pr-24"
                     />
                     <div className="absolute right-2 flex items-center gap-1">
@@ -590,16 +623,16 @@ export default function SettingsPage() {
                         type="button"
                         size="sm"
                         variant="ghost"
-                        onClick={() => setBencashBaseUrl("https://reseller.test.bencashgroup.com")}
+                        onClick={() => setBencashBaseUrl("https://reseller.bencashgroup.com/api/")}
                         className="h-7 px-2 text-[10px] text-muted-foreground hover:text-primary"
-                        title="Restablecer a URL de prueba oficial"
+                        title="Restablecer a URL de producción oficial"
                       >
                         Default
                       </Button>
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    URL base del API. Las rutas en el servidor Kestrel se ubican en <code className="font-mono bg-secondary px-1 py-0.5 rounded text-[10px]">/api/channel/requestcashin</code> y <code className="font-mono bg-secondary px-1 py-0.5 rounded text-[10px]">/api/channel/confirmcashin</code> (el sistema normaliza automáticamente). Documentación: <a href="https://reseller.test.bencashgroup.com/swagger/index.html" target="_blank" rel="noreferrer" className="text-blue-600 underline font-mono text-[10px]">Swagger API</a>.
+                    URL base del API. Las rutas se resuelven como <code className="font-mono bg-secondary px-1 py-0.5 rounded text-[10px]">/api/channel/requestcashin</code> y <code className="font-mono bg-secondary px-1 py-0.5 rounded text-[10px]">/api/channel/confirmcashin</code> sin duplicar <code className="font-mono">/api</code>. Documentación: <a href="https://reseller.bencashgroup.com/swagger/index.html" target="_blank" rel="noreferrer" className="text-blue-600 underline font-mono text-[10px]">Swagger de producción</a>.
                   </p>
                 </div>
 

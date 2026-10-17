@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/hooks/use-toast"
 import { ArrowLeft, Mail, Lock, User, Shield, Loader2, Phone, CreditCard, Sparkles } from "lucide-react"
 import Link from "next/link"
-import type { UserRole } from "@/lib/types"
 import { AppLogo } from "@/components/brand/app-logo"
 
 function LoginFormInner() {
@@ -21,8 +20,6 @@ function LoginFormInner() {
   const searchParams = useSearchParams()
 
   const defaultTab = searchParams.get("tab") === "register" ? "register" : "login"
-  const defaultRole = (searchParams.get("role") as UserRole) || "customer"
-
   const [activeTab, setActiveTab] = useState<string>(defaultTab)
   const [loadingGoogle, setLoadingGoogle] = useState(false)
   const [loadingEmail, setLoadingEmail] = useState(false)
@@ -37,7 +34,6 @@ function LoginFormInner() {
   const [regPassVal, setRegPassVal] = useState("")
   const [regPhoneVal, setRegPhoneVal] = useState("")
   const [regIdVal, setRegIdVal] = useState("")
-  const [regRoleVal, setRegRoleVal] = useState<UserRole>(defaultRole)
   const [regCountryVal, setRegCountryVal] = useState("DO")
 
   useEffect(() => {
@@ -130,16 +126,13 @@ function LoginFormInner() {
         regNameVal, 
         regEmailVal, 
         regPassVal, 
-        regRoleVal, 
         regCountryVal,
         regPhoneVal,
         regIdVal
       )
       toast({
         title: "¡Cuenta creada exitosamente!",
-        description: regRoleVal === "customer" 
-          ? "Tu Billetera y Bolsillo de Ahorro están listos para usar." 
-          : "Tu cuenta de agente ha sido creada correctamente.",
+        description: "Tu cuenta de cliente, Billetera y Bolsillo de Ahorro están listos para usar.",
       })
       router.push("/dashboard/wallet")
     } catch (err: any) {
@@ -375,34 +368,19 @@ function LoginFormInner() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="regRole">Tipo de Cuenta</Label>
-                      <Select value={regRoleVal} onValueChange={(v: UserRole) => setRegRoleVal(v)}>
-                        <SelectTrigger id="regRole">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="customer">👤 Cliente (Billetera & Ahorro)</SelectItem>
-                          <SelectItem value="agent">🏢 Sub-Agente (Punto de Atención)</SelectItem>
-                          <SelectItem value="admin">🛡️ Administrador</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="regCountry">País Base</Label>
-                      <Select value={regCountryVal} onValueChange={(v) => setRegCountryVal(v)}>
-                        <SelectTrigger id="regCountry">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="DO">Rep. Dominicana (RD$)</SelectItem>
-                          <SelectItem value="HT">Haití (HTG)</SelectItem>
-                          <SelectItem value="USA">Estados Unidos (USD)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="regCountry">País Base</Label>
+                    <Select value={regCountryVal} onValueChange={(v) => setRegCountryVal(v)}>
+                      <SelectTrigger id="regCountry">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DO">Rep. Dominicana (RD$)</SelectItem>
+                        <SelectItem value="HT">Haití (HTG)</SelectItem>
+                        <SelectItem value="USA">Estados Unidos (USD)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">Toda cuenta creada desde la web se registra como cliente. Solo administración puede cambiar el rol posteriormente.</p>
                   </div>
 
                   <Button

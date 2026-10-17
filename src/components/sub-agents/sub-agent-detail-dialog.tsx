@@ -122,13 +122,13 @@ export function SubAgentDetailDialog({
             <div className="rounded-xl border border-border bg-accent/5 p-4 space-y-1">
               <div className="flex items-center gap-1.5 text-accent text-xs font-bold uppercase tracking-wider">
                 <Percent className="w-3.5 h-3.5" />
-                Tasa de Beneficios
+                Beneficio de Remesas
               </div>
               <div className="text-2xl font-black text-foreground">
                 {subAgent.commissionRatePercent.toFixed(2)}%
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Margen asignado sobre cada transacción
+                Porcentaje aplicado solo a remesas
               </p>
             </div>
 

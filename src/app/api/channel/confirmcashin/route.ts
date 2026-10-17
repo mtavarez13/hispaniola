@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const serverConfig = getBencashServerConfig();
 
     const effectivePrivateKey = (privateKey || headerKey || serverConfig.privateKey || process.env.BENCASH_PRIVATE_KEY || '').trim();
-    const effectiveBaseUrl = (baseUrl || headerBaseUrl || serverConfig.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com').trim();
+    const effectiveBaseUrl = (baseUrl || headerBaseUrl || serverConfig.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.bencashgroup.com/api/').trim();
 
     if (effectivePrivateKey) {
       saveBencashServerConfig({ privateKey: effectivePrivateKey, baseUrl: effectiveBaseUrl });

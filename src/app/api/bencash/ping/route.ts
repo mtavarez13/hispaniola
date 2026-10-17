@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const savedConfig = await getPersistentBencashServerConfig();
-  let targetUrl = savedConfig.baseUrl || 'https://reseller.test.bencashgroup.com';
+  let targetUrl = savedConfig.baseUrl || 'https://reseller.bencashgroup.com/api/';
   let privateKey: string | undefined = savedConfig.privateKey || undefined;
 
   try {
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const baseUrl = url.searchParams.get('url') || process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com';
+  const baseUrl = url.searchParams.get('url') || process.env.BENCASH_BASE_URL || 'https://reseller.bencashgroup.com/api/';
   const privateKey = url.searchParams.get('key') || process.env.BENCASH_PRIVATE_KEY || undefined;
 
   const postReq = new NextRequest(req.url, {

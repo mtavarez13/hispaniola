@@ -9,7 +9,10 @@
       "**/*.zip"
     ],
     "frameworksBackend": {
-      "region": "us-central1"
+      "region": "us-central1",
+      "memory": "1GiB",
+      "concurrency": 20,
+      "timeoutSeconds": 120
     }
   },
   "firestore": [

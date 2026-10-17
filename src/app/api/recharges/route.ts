@@ -6,6 +6,8 @@ import { convertCurrency, currencySymbol, getEffectiveRates, normalizeWalletCurr
 import { createAndPushMobileNotification } from '@/lib/mobile-notifications';
 import { getRecargasConfig, RecargasProviderError, recargasRequest } from '@/lib/recargas-dominicanas';
 import { rechargeProfitability } from '@/lib/recharge-profitability';
+import { proxyRequestToFirebaseBackend } from '@/lib/firebase-backend-proxy';
+import { enqueueRemotePrintJob, type RemotePrintKind } from '@/lib/remote-print';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +59,16 @@ const isInvoiceProduct = (product: any) => {
   if (category === 'mobile-topup' || category === 'data-plan' || type === 'recarga' || type === 'paquetico') return false;
   return Boolean(invoiceProviderKey(product));
 };
+const isServiceTopupProduct = (product: any) => {
+  const category = normalizeProductText(product?.category);
+  const type = normalizeProductText(product?.type);
+  return category === 'energy-topup' || category === 'other' || type === 'recarga de servicio';
+};
+const isMobileTopupProduct = (product: any) => {
+  const category = normalizeProductText(product?.category);
+  const type = normalizeProductText(product?.type);
+  return category === 'mobile-topup' || (!category && type === 'recarga');
+};
 const normalizeCatalogProduct = (product: any) => {
   const normalizedName = normalizeProductText(product?.name || product?.key);
   const officialAsset = officialProviderAssets.find((entry) => entry.aliases.some((alias) => normalizedName === alias || normalizedName.includes(alias)))?.image;
@@ -74,7 +86,16 @@ const normalizeCatalogProduct = (product: any) => {
   return { ...product, name: directory?.name || product.name, image: resolvedImage, category: 'invoice', type: 'Factura' };
 };
 const completeCatalog = (products: any[]) => {
-  return products.map(normalizeCatalogProduct).sort((a, b) => Number(a.position ?? 9999) - Number(b.position ?? 9999));
+  const normalized = products.map(normalizeCatalogProduct).sort((a, b) => Number(a.position ?? 9999) - Number(b.position ?? 9999));
+  const claroInvoices = normalized.filter((product) => isInvoiceProduct(product) && invoiceProviderKey(product) === 'claro');
+  if (claroInvoices.length <= 1) return normalized;
+
+  // El proveedor publica dos Claro para facturas. El registro funcional es el de
+  // posición 6; el primero responde con error y no debe exponerse a ningún cliente.
+  const preferredClaro = claroInvoices.find((product) => Number(product.position) === 6)
+    || (isInvoiceProduct(normalized[5]) && invoiceProviderKey(normalized[5]) === 'claro' ? normalized[5] : null)
+    || claroInvoices[claroInvoices.length - 1];
+  return normalized.filter((product) => invoiceProviderKey(product) !== 'claro' || !isInvoiceProduct(product) || product === preferredClaro);
 };
 
 class RechargeError extends Error {
@@ -82,8 +103,11 @@ class RechargeError extends Error {
 }
 
 export async function GET(req: NextRequest) {
+  const proxied = await proxyRequestToFirebaseBackend(req);
+  if (proxied) return proxied;
+
   try {
-    await requireAuthenticatedUser(req);
+    const identity = await requireAuthenticatedUser(req);
     const action = req.nextUrl.searchParams.get('action') || 'products';
     if (action === 'products') {
       const config = await getRecargasConfig();
@@ -128,6 +152,28 @@ export async function GET(req: NextRequest) {
       const history = await recargasRequest(`/business-user/transactions?page=${page}&size=${size}`);
       return NextResponse.json({ success: true, history });
     }
+    if (action === 'my_history') {
+      const snapshot = await adminDb.collection('recharge_transactions').where('uid', '==', identity.uid).limit(100).get();
+      const transactions = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        const providerId = String(data.providerId || '');
+        const cancellableType = data.action === 'mobile_topup' || data.action === 'service_topup' || data.action === 'invoice_payment';
+        return {
+          id: doc.id,
+          action: String(data.action || ''),
+          title: data.action === 'invoice_payment' ? 'Pago de factura' : data.action === 'service_topup' ? 'Recarga de servicio' : data.action === 'mobile_topup' ? 'Recarga móvil' : data.action === 'data_plan' ? 'Paquetico' : 'Compra de PIN',
+          productName: String(data.productName || 'Servicio'), target: String(data.target || ''),
+          amountDOP: money(data.amountDOP), feeDOP: money(data.feeDOP), totalDOP: money(data.totalDOP),
+          pin: String(data.issuedPin || ''),
+          providerId, status: String(data.status || 'processing'),
+          canCancel: cancellableType && data.status === 'completed' && /^\d+$/.test(providerId),
+          cancellationError: String(data.cancellationError || ''),
+          createdAt: data.createdAtIso || data.createdAt?.toDate?.()?.toISOString?.() || null,
+          cancelledAt: data.cancelledAt?.toDate?.()?.toISOString?.() || null,
+        };
+      }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      return NextResponse.json({ success: true, transactions });
+    }
     throw new RechargeError(400, 'Consulta no válida.');
   } catch (error) {
     if (error instanceof RechargeError) return NextResponse.json({ success: false, error: error.message }, { status: error.status });
@@ -137,7 +183,102 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export async function DELETE(req: NextRequest) {
+  const proxied = await proxyRequestToFirebaseBackend(req);
+  if (proxied) return proxied;
+
+  let transactionRef: FirebaseFirestore.DocumentReference | null = null;
+  try {
+    const identity = await requireAuthenticatedUser(req);
+    const body = await req.json();
+    const transactionId = String(body.transactionId || '').trim();
+    if (!transactionId || !transactionId.startsWith(`${identity.uid}_`)) throw new RechargeError(400, 'Referencia de operación inválida.');
+
+    transactionRef = adminDb.collection('recharge_transactions').doc(transactionId);
+    const userRef = adminDb.collection('users').doc(identity.uid);
+    const operationsRef = adminDb.collection('settings').doc('operations');
+    const movementRef = userRef.collection('wallet_movements').doc(transactionId);
+    const cancellationLedgerRef = adminDb.collection('accounting_ledger').doc(`cancel_${transactionId}`);
+
+    const reserved = await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(transactionRef!);
+      if (!snapshot.exists) throw new RechargeError(404, 'Operación no encontrada.');
+      const data = snapshot.data() || {};
+      if (data.uid !== identity.uid) throw new RechargeError(403, 'No puedes cancelar esta operación.');
+      if (data.status === 'cancelled') return { duplicate: true, data };
+      if (data.status === 'cancel_requested' || data.status === 'cancellation_review') throw new RechargeError(409, 'La cancelación ya está siendo procesada o revisada.');
+      if (data.status !== 'completed') throw new RechargeError(409, 'Solo se pueden cancelar operaciones completadas.');
+      if (data.action !== 'mobile_topup' && data.action !== 'service_topup' && data.action !== 'invoice_payment') throw new RechargeError(409, 'El proveedor no permite cancelar este tipo de servicio.');
+      const providerId = Number(data.providerId);
+      if (!Number.isInteger(providerId) || providerId <= 0) throw new RechargeError(409, 'La operación no tiene una referencia cancelable del proveedor.');
+      transaction.update(transactionRef!, { status: 'cancel_requested', cancellationRequestedAt: FieldValue.serverTimestamp(), cancellationRequestedBy: identity.email, cancellationError: FieldValue.delete() });
+      transaction.set(movementRef, { status: 'cancel_requested' }, { merge: true });
+      return { duplicate: false, data, providerId };
+    });
+    if (reserved.duplicate) return NextResponse.json({ success: true, duplicate: true, transaction: { id: transactionId, status: 'cancelled' } });
+
+    const cancellationPath = reserved.data.action === 'invoice_payment'
+      ? `/transactions/cancel-invoice/${reserved.providerId}`
+      : `/business-user/cancel-transaction/${reserved.providerId}`;
+    let providerCancellation: any;
+    try {
+      providerCancellation = await recargasRequest(cancellationPath, { method: 'POST' });
+    } catch (error) {
+      if (error instanceof RecargasProviderError) {
+        const nextStatus = error.definiteFailure ? 'completed' : 'cancellation_review';
+        await Promise.all([
+          transactionRef.set({ status: nextStatus, cancellationError: error.message, cancellationProviderCode: error.code, cancellationUpdatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+          movementRef.set({ status: nextStatus, cancellationError: error.message }, { merge: true }),
+        ]);
+        return NextResponse.json({ success: false, error: error.status === 409 ? 'El proveedor rechazó la cancelación: el plazo venció o la operación ya fue anulada.' : error.message, reviewRequired: !error.definiteFailure }, { status: error.definiteFailure ? error.status : 202 });
+      }
+      await Promise.all([
+        transactionRef.set({ status: 'cancellation_review', cancellationError: 'No se pudo confirmar la respuesta del proveedor.', cancellationUpdatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+        movementRef.set({ status: 'cancellation_review' }, { merge: true }),
+      ]);
+      return NextResponse.json({ success: false, reviewRequired: true, error: 'La solicitud quedó en revisión. No intentes cancelarla nuevamente.' }, { status: 202 });
+    }
+
+    const cancellationRates = await getEffectiveRates((await adminDb.collection('settings').doc('rates').get()).data() || {});
+    const result = await adminDb.runTransaction(async (transaction) => {
+      const [operationSnapshot, profileSnapshot, operationsSnapshot] = await Promise.all([
+        transaction.get(transactionRef!), transaction.get(userRef), transaction.get(operationsRef),
+      ]);
+      if (!operationSnapshot.exists || !profileSnapshot.exists) throw new RechargeError(404, 'No se pudo restaurar la operación.');
+      const operation = operationSnapshot.data() || {};
+      if (operation.status === 'cancelled') return { duplicate: true, walletBalance: Number(profileSnapshot.data()?.walletBalance || 0) };
+      if (operation.status !== 'cancel_requested') throw new RechargeError(409, 'La operación cambió de estado y requiere revisión.');
+      const profile = profileSnapshot.data() || {};
+      const walletRefund = money(operation.walletDebit || 0);
+      const providerRefund = money(operation.adminServiceDebitDOP || operation.amountDOP || 0);
+      const newProviderBalance = money(Number(operationsSnapshot.data()?.rechargeServicesBalanceDOP || 0) + providerRefund);
+      const totalBenefitReversalDOP = money(operation.agentBenefitDOP || 0);
+      const accruedBenefitReversalDOP = Math.min(money(profile.benefitAccruedDOP || 0), totalBenefitReversalDOP);
+      const redeemedBenefitReversalDOP = money(totalBenefitReversalDOP - accruedBenefitReversalDOP);
+      const redeemedBenefitWalletDebit = money(convertCurrency(redeemedBenefitReversalDOP, 'DOP', normalizeWalletCurrency(operation.walletCurrency || profile.primaryCurrency), cancellationRates));
+      const newWalletBalance = money(Number(profile.walletBalance || 0) + walletRefund - redeemedBenefitWalletDebit);
+      transaction.update(userRef, { walletBalance: newWalletBalance, benefitAccruedDOP: money(Number(profile.benefitAccruedDOP || 0) - accruedBenefitReversalDOP), walletUpdatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+      transaction.set(operationsRef, { rechargeServicesBalanceDOP: newProviderBalance, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      transaction.update(transactionRef!, { status: 'cancelled', cancelled: true, refunded: true, walletRefund, providerRefundDOP: providerRefund, reversedAgentBenefitDOP: totalBenefitReversalDOP, redeemedBenefitWalletDebit, providerCancellation: providerCancellation || null, cancelledAt: FieldValue.serverTimestamp(), cancellationUpdatedAt: FieldValue.serverTimestamp() });
+      transaction.set(movementRef, { status: 'cancelled', refunded: true, refundAmount: walletRefund, redeemedBenefitWalletDebit, newBalance: newWalletBalance, cancellationReference: String(reserved.providerId) }, { merge: true });
+      transaction.create(cancellationLedgerRef, { type: 'recharge_cancellation', direction: 'in', amountDOP: providerRefund, targetUid: identity.uid, targetName: identity.name, provider: 'recargas_dominicanas', providerId: String(reserved.providerId), originalTransactionId: transactionId, walletRefund, reversedAgentBenefitDOP: totalBenefitReversalDOP, redeemedBenefitWalletDebit, description: `Anulación confirmada · ${String(operation.productName || 'Servicio')}`, performedBy: identity.email, createdAt: FieldValue.serverTimestamp() });
+      return { duplicate: false, walletBalance: newWalletBalance, walletRefund, providerRefundDOP: providerRefund, reversedAgentBenefitDOP: totalBenefitReversalDOP };
+    });
+
+    await createAndPushMobileNotification(identity.uid, { title: 'Operación cancelada', body: `El saldo de la operación ${reserved.providerId} fue devuelto a tu billetera.`, type: 'deposit', referenceId: transactionId }).catch(() => undefined);
+    return NextResponse.json({ success: true, transaction: { id: transactionId, providerId: String(reserved.providerId), status: 'cancelled' }, ...result });
+  } catch (error) {
+    if (error instanceof RechargeError) return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    if (error instanceof RecargasProviderError) return NextResponse.json({ success: false, error: error.message }, { status: error.status >= 400 && error.status < 600 ? error.status : 502 });
+    const authError = authenticatedUserError(error);
+    return NextResponse.json({ success: false, error: authError.message }, { status: authError.status });
+  }
+}
+
 export async function POST(req: NextRequest) {
+  const proxied = await proxyRequestToFirebaseBackend(req);
+  if (proxied) return proxied;
+
   let uid = '';
   let transactionRef: FirebaseFirestore.DocumentReference | null = null;
   let movementRef: FirebaseFirestore.DocumentReference | null = null;
@@ -149,7 +290,7 @@ export async function POST(req: NextRequest) {
     uid = identity.uid;
     const body = await req.json();
     const action = String(body.action || 'mobile_topup');
-    if (!['mobile_topup', 'data_plan', 'pin_purchase', 'invoice_payment'].includes(action)) throw new RechargeError(400, 'Tipo de operación no válido.');
+    if (!['mobile_topup', 'service_topup', 'data_plan', 'pin_purchase', 'invoice_payment'].includes(action)) throw new RechargeError(400, 'Tipo de operación no válido.');
     const productId = Number(body.productId);
     const idempotencyKey = String(body.idempotencyKey || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
     if (!Number.isInteger(productId) || productId <= 0 || !idempotencyKey) throw new RechargeError(400, 'Faltan el producto o la referencia única de la operación.');
@@ -162,7 +303,8 @@ export async function POST(req: NextRequest) {
     if (action === 'data_plan' && productCategory !== 'data-plan' && productType !== 'paquetico') throw new RechargeError(400, 'El producto seleccionado no corresponde a un paquetico.');
     if (action === 'pin_purchase' && productCategory !== 'pin' && productType !== 'pin') throw new RechargeError(400, 'El producto seleccionado no corresponde a un PIN.');
     if (action === 'invoice_payment' && !isInvoiceProduct(product)) throw new RechargeError(400, 'El producto seleccionado no corresponde a una factura.');
-    if (action === 'mobile_topup' && productCategory !== 'mobile-topup' && productType !== 'recarga') throw new RechargeError(400, 'El producto seleccionado no corresponde a una recarga móvil.');
+    if (action === 'service_topup' && !isServiceTopupProduct(product)) throw new RechargeError(400, 'El producto seleccionado no corresponde a una recarga de servicio.');
+    if (action === 'mobile_topup' && !isMobileTopupProduct(product)) throw new RechargeError(400, 'El producto seleccionado no corresponde a una recarga móvil.');
 
     let amountDOP = money(body.amount);
     let target = '';
@@ -177,6 +319,15 @@ export async function POST(req: NextRequest) {
       target = nic;
       providerPath = '/transactions/pay-invoice';
       providerBody = { productId, nic, amount: amountDOP };
+    } else if (action === 'service_topup') {
+      const number = String(body.number || '').trim();
+      if (!number || amountDOP <= 0) throw new RechargeError(400, 'Indica el contrato, número de servicio y un monto válido.');
+      const minimum = Number(product.min || 0);
+      const maximum = Number(product.max || Number.MAX_SAFE_INTEGER);
+      if (amountDOP < minimum || amountDOP > maximum) throw new RechargeError(400, `El monto permitido es de RD$${minimum.toFixed(2)} a RD$${maximum.toFixed(2)}.`);
+      target = number;
+      providerPath = '/transactions/send-service-topup';
+      providerBody = { productId, number, amount: amountDOP };
     } else if (action === 'data_plan') {
       const phone = String(body.phone || '').replace(/\D/g, '');
       const planId = String(body.planId || '').trim();
@@ -237,7 +388,7 @@ export async function POST(req: NextRequest) {
       }
       const adminServiceBalanceAfterDOP = money(adminServiceBalanceDOP - amountDOP);
       const newBalance = money(currentBalance - walletDebit);
-      const actionTitle = action === 'invoice_payment' ? 'Pago de factura' : action === 'data_plan' ? 'Paquetico de internet' : action === 'pin_purchase' ? 'Compra de PIN' : 'Recarga móvil';
+      const actionTitle = action === 'invoice_payment' ? 'Pago de factura' : action === 'service_topup' ? 'Recarga de servicio' : action === 'data_plan' ? 'Paquetico de internet' : action === 'pin_purchase' ? 'Compra de PIN' : 'Recarga móvil';
       const data = {
         uid: identity.uid,
         userName: identity.name,
@@ -358,11 +509,29 @@ export async function POST(req: NextRequest) {
     });
     await Promise.all([
       createAndPushMobileNotification(identity.uid, {
-        title: action === 'invoice_payment' ? 'Factura pagada' : action === 'data_plan' ? 'Paquetico activado' : action === 'pin_purchase' ? 'PIN comprado' : 'Recarga completada',
+        title: action === 'invoice_payment' ? 'Factura pagada' : action === 'service_topup' ? 'Servicio recargado' : action === 'data_plan' ? 'Paquetico activado' : action === 'pin_purchase' ? 'PIN comprado' : 'Recarga completada',
         body: `${String(product.name || 'Servicio')} por RD$${amountDOP.toFixed(2)} procesado correctamente.`,
         type: 'general',
         referenceId: transactionRef.id,
       }),
+      enqueueRemotePrintJob(identity.uid, {
+        kind: action as RemotePrintKind,
+        transactionId: transactionRef.id,
+        title: action === 'invoice_payment' ? 'Pago de factura' : action === 'service_topup' ? 'Recarga de servicio' : action === 'data_plan' ? 'Paquetico de internet' : action === 'pin_purchase' ? 'Compra de PIN' : 'Recarga móvil',
+        reference: providerId,
+        userName: identity.name,
+        userCode: String(identity.profile?.clientCode || ''),
+        productName: String(product.name || 'Servicio'),
+        provider: 'Recargas Dominicanas',
+        target,
+        recipientPhone: target,
+        amount: amountDOP,
+        currency: 'DOP',
+        fee: feeDOP,
+        total: totalDOP,
+        pin: issuedPin,
+        status: 'completed',
+      }).catch((printError) => console.error('[Remote print] recharge queue error:', printError)),
     ]);
 
     return NextResponse.json({
@@ -372,7 +541,7 @@ export async function POST(req: NextRequest) {
         providerId,
         status: 'completed',
         action,
-        title: action === 'invoice_payment' ? 'Pago de factura' : action === 'data_plan' ? 'Paquetico de internet' : action === 'pin_purchase' ? 'Compra de PIN' : 'Recarga móvil',
+        title: action === 'invoice_payment' ? 'Pago de factura' : action === 'service_topup' ? 'Recarga de servicio' : action === 'data_plan' ? 'Paquetico de internet' : action === 'pin_purchase' ? 'Compra de PIN' : 'Recarga móvil',
         description: `${String(product.name || 'Servicio')} · ${target}`,
         productName: String(product.name || 'Servicio'),
         target,

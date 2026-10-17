@@ -435,7 +435,7 @@ export function SubAgentFormDialog({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      Tasa en % de Beneficios (Comisión) *
+                      Beneficio de remesas (%) *
                     </Label>
                     <div className="relative">
                       <Input
@@ -516,7 +516,7 @@ export function SubAgentFormDialog({
                     <div>
                       <span className="font-bold text-foreground">Ejemplo de Ganancia Proyectada:</span>
                       <p className="text-muted-foreground text-[11px]">
-                        Por una operación de 10,000 {localCurrency} con tasa de {commissionRatePercent.toFixed(2)}%:
+                        Por una remesa de 10,000 {localCurrency} con tasa de {commissionRatePercent.toFixed(2)}% (otros servicios usan Contabilidad):
                       </p>
                     </div>
                   </div>

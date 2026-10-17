@@ -102,7 +102,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false)
 
   // BenCash Channel API State
-  const [bencashBaseUrl, setBencashBaseUrl] = useState("https://reseller.test.bencashgroup.com")
+  const [bencashBaseUrl, setBencashBaseUrl] = useState("https://reseller.bencashgroup.com/api/")
   const [bencashPrivateKey, setBencashPrivateKey] = useState("")
   const [showAdminKey, setShowAdminKey] = useState(false)
   const [adminCopiedUrl, setAdminCopiedUrl] = useState(false)
@@ -154,6 +154,26 @@ export default function AdminPage() {
     }
   }, [settings])
 
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    void user.getIdToken().then(async (idToken) => {
+      const response = await fetch('/api/bencash/config', {
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.success === false) throw new Error(data.error || 'No se pudo cargar BenCash')
+      if (!cancelled) {
+        setBencashBaseUrl(data.baseUrl || 'https://reseller.bencashgroup.com/api/')
+        setBencashPrivateKey(data.privateKey || '')
+      }
+    }).catch((error) => {
+      if (!cancelled) console.warn('No se pudo cargar BenCash desde el servidor:', error)
+    })
+    return () => { cancelled = true }
+  }, [user])
+
   const handleAdminCopy = (text: string, type: "url" | "key") => {
     if (!text) return
     navigator.clipboard.writeText(text)
@@ -172,7 +192,7 @@ export default function AdminPage() {
 
   const handleSaveBenCashConfig = async () => {
     setSavingBenCash(true)
-    const cleanUrl = (bencashBaseUrl.trim() || "https://reseller.test.bencashgroup.com").replace(/\/+$/, "")
+    const cleanUrl = `${(bencashBaseUrl.trim() || "https://reseller.bencashgroup.com/api/").replace(/\/+$/, "")}/`
     const cleanKey = bencashPrivateKey.trim()
 
     const success = await updateSettings(
@@ -186,21 +206,29 @@ export default function AdminPage() {
 
     try {
       const idToken = await user?.getIdToken()
-      await fetch("/api/bencash/config", {
+      if (!idToken) throw new Error('La sesión administrativa no está disponible.')
+      const response = await fetch("/api/bencash/config", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ baseUrl: cleanUrl, privateKey: cleanKey }),
       })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.success === false) throw new Error(data.error || 'El servidor no confirmó el guardado de BenCash.')
+      if (!success) throw new Error('No se pudo actualizar la configuración general.')
+      setBencashBaseUrl(data.baseUrl || cleanUrl)
+      toast({
+        title: "✓ API Key y URL Guardadas",
+        description: "La configuración quedó guardada permanentemente.",
+      })
     } catch (e) {
-      console.warn("Error en sync de servidor:", e)
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar BenCash',
+        description: e instanceof Error ? e.message : 'Error del servidor',
+      })
+    } finally {
+      setSavingBenCash(false)
     }
-
-    setSavingBenCash(false)
-
-    toast({
-      title: "✓ API Key y URL Guardadas",
-      description: "La configuración se ha guardado en la base de datos, servidor y almacenamiento local.",
-    })
   }
 
   const handlePingBenCash = async () => {
@@ -212,7 +240,7 @@ export default function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          baseUrl: bencashBaseUrl.trim() || "https://reseller.test.bencashgroup.com",
+          baseUrl: bencashBaseUrl.trim() || "https://reseller.bencashgroup.com/api/",
           privateKey: bencashPrivateKey.trim() || undefined,
         }),
       })
@@ -1291,10 +1319,10 @@ export default function AdminPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBencashBaseUrl("https://api.bencash.com")}
+                    onClick={() => setBencashBaseUrl("https://reseller.bencashgroup.com/api/")}
                     className="text-xs bg-white text-muted-foreground"
                   >
-                    Producción: https://api.bencash.com
+                    Producción: https://reseller.bencashgroup.com/api/
                   </Button>
                 </div>
               </div>
@@ -1318,7 +1346,7 @@ export default function AdminPage() {
                     id="admin-bencash-url"
                     value={bencashBaseUrl}
                     onChange={(e) => setBencashBaseUrl(e.target.value)}
-                    placeholder="https://reseller.test.bencashgroup.com"
+                    placeholder="https://reseller.bencashgroup.com/api/"
                     className="font-mono text-xs bg-white"
                   />
                   <p className="text-[10px] text-muted-foreground">

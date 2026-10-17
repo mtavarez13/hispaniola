@@ -88,6 +88,12 @@ function ClientWalletContent() {
   const [benefitRatePercent, setBenefitRatePercent] = useState(Number(userProfile?.benefitRatePercent || 0));
   const [benefitAccruedDOP, setBenefitAccruedDOP] = useState(Number(userProfile?.benefitAccruedDOP || 0));
   const [benefitRedeeming, setBenefitRedeeming] = useState(false);
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const monthStartDate = `${todayDate.slice(0, 8)}01`;
+  const [benefitFrom, setBenefitFrom] = useState(monthStartDate);
+  const [benefitTo, setBenefitTo] = useState(todayDate);
+  const [benefitHistory, setBenefitHistory] = useState<any>(null);
+  const [benefitHistoryLoading, setBenefitHistoryLoading] = useState(false);
 
   // Data lists
   const [deposits, setDeposits] = useState<ClientDepositRecord[]>([]);
@@ -162,6 +168,22 @@ function ClientWalletContent() {
       setActiveTab(queryTab);
     }
   }, [queryTab]);
+
+  const loadBenefitHistory = useCallback(async () => {
+    if (!user) return;
+    setBenefitHistoryLoading(true);
+    try {
+      const response = await fetch(`/api/mobile/benefits?from=${encodeURIComponent(benefitFrom)}&to=${encodeURIComponent(benefitTo)}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}` }, cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok || !body.success) throw new Error(body.error || "No se pudo cargar el historial de beneficios");
+      setBenefitHistory(body);
+    } catch (error) { toast({ variant: "destructive", title: "Historial no disponible", description: error instanceof Error ? error.message : "Error inesperado" }); }
+    finally { setBenefitHistoryLoading(false); }
+  }, [user, benefitFrom, benefitTo, toast]);
+
+  useEffect(() => {
+    if (user && userProfile?.role === "agent") loadBenefitHistory();
+  }, [user, userProfile?.role, loadBenefitHistory]);
 
   // Sync balances with AuthContext
   const syncBalances = (newB: WalletBalances) => {
@@ -568,7 +590,7 @@ function ClientWalletContent() {
             <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-amber-800">Beneficio acumulado</p>
-                <p className="text-sm text-amber-950">Recibes {benefitRatePercent.toFixed(2)}% por tus remesas completadas.</p>
+                <p className="text-sm text-amber-950">Remesas: {benefitRatePercent.toFixed(2)}% según tu perfil. Recargas y servicios: beneficio definido exclusivamente en Contabilidad.</p>
               </div>
               <div className="flex flex-col sm:items-end gap-2">
                 <div className="text-2xl font-black text-amber-900">RD$ {benefitAccruedDOP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -576,6 +598,17 @@ function ClientWalletContent() {
                   <Coins className="w-4 h-4" /> {benefitRedeeming ? 'Canjeando…' : 'Convertir en balance'}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {userProfile?.role === "agent" && (
+          <Card className="lg:col-span-12 border-indigo-200 shadow-sm">
+            <CardHeader className="pb-3"><CardTitle className="text-lg">Beneficios por rango de fecha</CardTitle><CardDescription>Vista unificada de remesas, recargas, paqueticos, PIN y pagos de facturas.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><div><Label>Desde</Label><Input type="date" value={benefitFrom} onChange={(event) => setBenefitFrom(event.target.value)} /></div><div><Label>Hasta</Label><Input type="date" value={benefitTo} onChange={(event) => setBenefitTo(event.target.value)} /></div><Button type="button" className="self-end gap-2" disabled={benefitHistoryLoading} onClick={loadBenefitHistory}>{benefitHistoryLoading ? <RefreshCw className="h-4 w-4 animate-spin"/> : <Filter className="h-4 w-4"/>} Consultar</Button></div>
+              <div className="grid gap-3 sm:grid-cols-4"><BenefitStat label="Remesas" value={benefitHistory?.summary?.remittanceDOP}/><BenefitStat label="Servicios" value={benefitHistory?.summary?.servicesDOP}/><BenefitStat label="Total generado" value={benefitHistory?.summary?.generatedDOP}/><BenefitStat label="Canjeado" value={benefitHistory?.summary?.redeemedDOP}/></div>
+              <div className="max-h-72 overflow-auto rounded-xl border"><Table><TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Origen</TableHead><TableHead>Detalle</TableHead><TableHead className="text-right">Beneficio</TableHead></TableRow></TableHeader><TableBody>{(benefitHistory?.items || []).map((item: any) => <TableRow key={`${item.source}-${item.id}`}><TableCell className="whitespace-nowrap text-xs">{item.createdAt ? new Date(item.createdAt).toLocaleString("es-DO") : "—"}</TableCell><TableCell><Badge variant="outline">{item.source === "remittance" ? "Remesa" : "Servicio"}</Badge><div className="mt-1 text-xs font-semibold">{item.sourceLabel}</div></TableCell><TableCell className="text-xs">{item.description || "—"}</TableCell><TableCell className="text-right font-black text-emerald-700">RD${Number(item.amountDOP || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</TableCell></TableRow>)}{!benefitHistoryLoading && !(benefitHistory?.items || []).length && <TableRow><TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">No hay beneficios generados en este rango.</TableCell></TableRow>}</TableBody></Table></div>
             </CardContent>
           </Card>
         )}
@@ -1630,6 +1663,10 @@ function ClientWalletContent() {
       </Dialog>
     </div>
   );
+}
+
+function BenefitStat({ label, value }: { label: string; value?: number }) {
+  return <div className="rounded-xl border bg-slate-50 p-3"><div className="text-[11px] font-bold uppercase text-muted-foreground">{label}</div><div className="mt-1 text-lg font-black text-slate-900">RD${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>;
 }
 
 export default function ClientWalletPage() {

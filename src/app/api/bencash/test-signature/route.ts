@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const rawKey = body.privateKey || process.env.BENCASH_PRIVATE_KEY || '';
     const privateKey = rawKey.trim();
-    const rawBaseUrl = (body.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com').trim();
+    const rawBaseUrl = (body.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.bencashgroup.com/api/').trim();
     const requestId = sanitizeRequestId(body.requestId || generateUniqueRequestId());
     const toAccountNumber = formatHaitiPhoneNumber(body.toAccountNumber || '50940885084');
     const amount = Number(body.amount) || 10;

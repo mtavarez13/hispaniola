@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue, type DocumentReference } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { adminAuthError, requireAdmin } from '@/lib/server-auth';
+import { proxyAdministrativeRequestToFirebase } from '@/lib/firebase-backend-proxy';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_OPENING_BALANCE_DOP = 0;
@@ -9,6 +10,9 @@ const CONFIRMATION = 'BORRAR TODOS LOS SALDOS';
 const money = (value: unknown) => Math.round(Number(value) * 100) / 100;
 
 export async function GET(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     await requireAdmin(req, { requireSettings: true });
     const snapshot = await adminDb.collection('settings').doc('operations').get();
@@ -27,6 +31,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     const admin = await requireAdmin(req, { requireSettings: true });
     const body = await req.json();
@@ -47,6 +54,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     const admin = await requireAdmin(req, { requireSettings: true });
     if (!admin.isPrimary) return NextResponse.json({ success: false, error: 'Solo el administrador principal puede reiniciar todos los saldos' }, { status: 403 });

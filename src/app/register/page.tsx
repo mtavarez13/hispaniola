@@ -8,7 +8,7 @@ export default function RegisterPage() {
   const router = useRouter()
 
   useEffect(() => {
-    router.replace("/login?tab=register&role=customer")
+    router.replace("/login?tab=register")
   }, [router])
 
   return (

@@ -9,6 +9,7 @@ import {
   moncashRequestCashIn,
 } from '@/lib/bencash/service';
 import { convertCurrency, currencySymbol, fromUsd, getEffectiveRates, normalizeWalletCurrency, toUsd, type WalletCurrency } from '@/lib/currency';
+import { enqueueRemotePrintJob } from '@/lib/remote-print';
 
 export const dynamic = 'force-dynamic';
 
@@ -303,6 +304,25 @@ export async function POST(req: NextRequest) {
         createdAt: FieldValue.serverTimestamp(),
       });
     });
+
+    await enqueueRemotePrintJob(identity.uid, {
+      kind: 'remittance',
+      transactionId: remittanceId,
+      title: `Remesa ${operator}`,
+      reference: txId || String(requestId || '') || remittanceId,
+      userName: identity.name,
+      userCode: String(identity.profile?.clientCode || ''),
+      provider: operator,
+      recipientName,
+      recipientPhone,
+      amount: reservation.sourceAmount,
+      currency: reservation.sourceCurrency,
+      fee: roundMoney(reservation.sourceAmount * reservation.feePercent / 100),
+      total: reservation.sourceAmount,
+      deliveredAmount: reservation.amountHTG,
+      deliveredCurrency: 'HTG',
+      status,
+    }).catch((printError) => console.error('[Remote print] remittance queue error:', printError));
 
     return NextResponse.json({
       success: true,

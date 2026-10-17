@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
         const cleanPhone = formatHaitiPhoneNumber(recipient.phone);
         const serverConfig = getBencashServerConfig();
         const effectiveKey = (settings.bencashPrivateKey || serverConfig.privateKey || process.env.BENCASH_PRIVATE_KEY || '').trim();
-        const effectiveUrl = (settings.bencashBaseUrl || serverConfig.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.test.bencashgroup.com').trim();
+        const effectiveUrl = (settings.bencashBaseUrl || serverConfig.baseUrl || process.env.BENCASH_BASE_URL || 'https://reseller.bencashgroup.com/api/').trim();
 
         if (operator.toLowerCase() === 'moncash') {
           const cashinRes = await moncashRequestCashIn({

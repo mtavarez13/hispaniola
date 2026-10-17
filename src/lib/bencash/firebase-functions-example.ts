@@ -4,7 +4,7 @@
  *
  * URLs Oficiales:
  * - Panel Seller (Ver balance, recargas y transacciones): https://sellertest.bencashgroup.com
- * - URL Base del API: https://reseller.test.bencashgroup.com
+ * - URL Base de producción: https://reseller.bencashgroup.com/api/
  *
  * Reglas Críticas de Autenticación y Seguridad:
  * 1. Header Obligatorio: 'skml' en TODAS las peticiones HTTP con la Private Key.
@@ -35,7 +35,7 @@ export class BencashStandaloneClient {
     this.baseUrl = (
       config?.baseUrl ||
       process.env.BENCASH_BASE_URL ||
-      'https://reseller.test.bencashgroup.com'
+      'https://reseller.bencashgroup.com/api/'
     ).replace(/\/+$/, '');
 
     this.privateKey = (
@@ -187,7 +187,7 @@ export const bencashRequestCashInFunction = onRequest(
 
       // Inicializa el cliente oficial con la llave segura
       const client = new BencashClient({
-        baseUrl: process.env.BENCASH_BASE_URL || "https://reseller.test.bencashgroup.com",
+        baseUrl: process.env.BENCASH_BASE_URL || "https://reseller.bencashgroup.com/api/",
         privateKey: bencashPrivateKey.value(),
       });
 
@@ -226,7 +226,7 @@ export const sendRemittanceCallable = onCall(
 
     const { toAccountNumber, amount, content, autoConfirm } = request.data;
     const client = new BencashClient({
-      baseUrl: process.env.BENCASH_BASE_URL || "https://reseller.test.bencashgroup.com",
+      baseUrl: process.env.BENCASH_BASE_URL || "https://reseller.bencashgroup.com/api/",
       privateKey: bencashSecret.value(),
     });
 

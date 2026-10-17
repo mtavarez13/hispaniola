@@ -79,6 +79,7 @@ function providerMessage(payload: any, fallback: string) {
   const messages: Record<string, string> = {
     INSUFFICIENT_FUNDS: 'El proveedor no tiene fondos suficientes.',
     INVALID_PHONE: 'El número indicado no es válido.',
+    INVALID_NUMBER: 'El número de contrato o servicio no es válido.',
     DUPLICATED: 'El proveedor detectó una transacción duplicada.',
     WRONG_COMPANY: 'El número no corresponde a la compañía seleccionada.',
     NOT_FOUND_EXCEPTION: 'No se encontró el contrato o servicio solicitado.',
@@ -86,6 +87,11 @@ function providerMessage(payload: any, fallback: string) {
     REQUEST_TIMEOUT: 'El proveedor agotó el tiempo de espera.',
     WRONG_USER_OR_PASSWORD: 'Usuario o contraseña incorrectos.',
     OUTSTANDING_BALANCE: 'El número tiene un balance pendiente y no admite este paquetico.',
+    TRANSACTION_ALREADY_CANCELLED: 'La operación ya fue cancelada.',
+    CANCELLATION_TIME_EXPIRED: 'El tiempo permitido para cancelar esta operación ya venció.',
+    CANCELLATION_NOT_ALLOWED: 'El proveedor no permite cancelar esta operación.',
+    INTERNAL_SERVER_ERROR: 'El proveedor presentó un error interno. Intenta nuevamente más tarde.',
+    UNKNOWN_ERROR: 'El proveedor no pudo completar la operación.',
   };
   return messages[raw] || raw;
 }
