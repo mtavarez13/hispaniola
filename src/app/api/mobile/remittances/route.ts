@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentReference } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { authenticatedUserError, requireAuthenticatedUser } from '@/lib/server-auth';
 import { getPersistentBencashServerConfig } from '@/lib/server-config';
 import {
+  executeConfirmCashIn,
   executeRequestCashIn,
   extractBencashReceiverName,
   formatHaitiPhoneNumber,
@@ -62,10 +63,11 @@ export async function POST(req: NextRequest) {
   const operator = String(body.operator || '').toLowerCase() === 'moncash' ? 'MonCash' :
     String(body.operator || '').toLowerCase() === 'natcash' ? 'NatCash' : '';
   const recipientPhone = formatHaitiPhoneNumber(String(body.recipientPhone || ''));
-  const recipientName = String(body.recipientName || '').trim().slice(0, 100);
+  let recipientName = String(body.recipientName || '').trim().slice(0, 100);
   const requestedAmount = roundMoney(Number(body.amount ?? body.amountUSD));
   const legacyAmountInUSD = body.amount == null;
   const idempotencyKey = String(body.idempotencyKey || '').trim();
+  const previewId = String(body.previewId || '').trim();
 
   if (!operator) return NextResponse.json({ success: false, error: 'Seleccione NatCash o MonCash' }, { status: 400 });
   if (!/^509\d{8}$/.test(recipientPhone)) {
@@ -90,6 +92,30 @@ export async function POST(req: NextRequest) {
   try {
     const config = await getPersistentBencashServerConfig();
     if (!config.privateKey) throw new MobileApiError(503, 'El canal de remesas no está configurado temporalmente');
+    let preparedPreview: Record<string, any> | null = null;
+    let preparedPreviewRef: DocumentReference | null = null;
+    if (previewId) {
+      if (operator !== 'NatCash') throw new MobileApiError(400, 'La verificación previa solo corresponde a NatCash');
+      preparedPreviewRef = adminDb.collection('mobile_remittance_previews').doc(previewId);
+      const previewSnapshot = await preparedPreviewRef.get();
+      if (!previewSnapshot.exists) throw new MobileApiError(404, 'La verificación NatCash no existe o ya expiró');
+      preparedPreview = previewSnapshot.data() || {};
+      if (preparedPreview.userId !== identity.uid || preparedPreview.status !== 'ready') {
+        throw new MobileApiError(409, 'Esta verificación NatCash ya no está disponible');
+      }
+      if (Number(preparedPreview.expiresAtMs || 0) < Date.now()) {
+        throw new MobileApiError(410, 'La verificación NatCash expiró. Consulte nuevamente el titular.');
+      }
+      if (
+        preparedPreview.recipientPhone !== recipientPhone ||
+        preparedPreview.idempotencyKey !== idempotencyKey ||
+        Math.abs(Number(preparedPreview.requestedAmount) - requestedAmount) > 0.009
+      ) {
+        throw new MobileApiError(409, 'Los datos del envío cambiaron después de verificar el titular');
+      }
+      recipientName = String(preparedPreview.accountName || '').trim().slice(0, 100);
+      if (!recipientName) throw new MobileApiError(409, 'La verificación no contiene un titular válido');
+    }
     const [settingsDocument, linkedSubAgents] = await Promise.all([
       settingsRef.get(),
       identity.email ? adminDb.collection('sub_agents').where('email', '==', identity.email).limit(1).get() : Promise.resolve(null),
@@ -201,6 +227,30 @@ export async function POST(req: NextRequest) {
         baseUrl: config.baseUrl,
         privateKey: config.privateKey,
       });
+    } else if (preparedPreview) {
+      const confirmation = await executeConfirmCashIn({
+        requestId: preparedPreview.requestId,
+        txId: String(preparedPreview.txId || ''),
+        verifyCode: '1111',
+        isConfirm: '1',
+        baseUrl: config.baseUrl,
+        privateKey: config.privateKey,
+      });
+      provider = {
+        ...confirmation,
+        isConfirmed: String(confirmation.resultCode) === '200',
+        requestId: preparedPreview.requestId,
+        result: {
+          ...(confirmation.result || {}),
+          txId: String(preparedPreview.txId || confirmation.result?.txId || ''),
+          requestId: preparedPreview.requestId,
+          receiver: {
+            accountNumber: recipientPhone,
+            accountName: recipientName,
+            accountCurrency: 'HTG',
+          },
+        },
+      };
     } else {
       provider = await executeRequestCashIn({
         toAccountNumber: recipientPhone,
@@ -329,6 +379,10 @@ export async function POST(req: NextRequest) {
       deliveredCurrency: 'HTG',
       status,
     }).catch((printError) => console.error('[Remote print] remittance queue error:', printError));
+
+    if (preparedPreviewRef) {
+      await preparedPreviewRef.set({ status: 'completed', completedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
 
     return NextResponse.json({
       success: true,

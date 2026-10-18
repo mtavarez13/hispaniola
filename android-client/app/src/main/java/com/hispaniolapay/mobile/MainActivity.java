@@ -1141,10 +1141,12 @@ public final class MainActivity extends Activity {
             double valueUsd = toUsd(value, sourceCurrency, rates);
             double htg = round("DOP".equals(sourceCurrency) ? (value - fee) * dopToHtg : "HTG".equals(sourceCurrency) ? value - fee : (valueUsd - (valueUsd * feePct / 100d)) * rate);
             String finalPhone = recipientPhone;
-            new AlertDialog.Builder(this).setTitle("Confirmar remesa")
-                    .setMessage(selected[0] + " · +509 " + finalPhone + "\n" + recipient + "\n\nDebitar: " + walletMoney(value) + "\nRecibe: " + String.format(Locale.US, "%,.2f HTG", htg) + "\nTarifa incluida: " + walletMoney(fee))
+            boolean requiresNatCashVerification = "NatCash".equals(selected[0]);
+            new AlertDialog.Builder(this).setTitle(requiresNatCashVerification ? "Consultar titular NatCash" : "Confirmar remesa MonCash")
+                    .setMessage(selected[0] + " · +509 " + finalPhone + "\n" + recipient + "\n\nDebitar: " + walletMoney(value) + "\nRecibe: " + String.format(Locale.US, "%,.2f HTG", htg) + "\nTarifa incluida: " + walletMoney(fee)
+                            + (requiresNatCashVerification ? "\n\nNatCash mostrará el titular real antes del débito final." : "\n\nMonCash no ofrece consulta independiente del titular antes del envío."))
                     .setNegativeButton("Cancelar", null)
-                    .setPositiveButton("Enviar ahora", (dialog, which) -> executeSend(send, selected[0], recipient, finalPhone, value)).show();
+                    .setPositiveButton(requiresNatCashVerification ? "Consultar titular" : "Enviar ahora", (dialog, which) -> executeSend(send, selected[0], recipient, finalPhone, value)).show();
         });
     }
 
@@ -1253,10 +1255,46 @@ public final class MainActivity extends Activity {
 
     private void executeSend(Button button, String operator, String recipient, String phone, double amount) {
         button.setEnabled(false);
+        String idempotencyKey = UUID.randomUUID().toString();
+        if (!"NatCash".equals(operator)) {
+            button.setText("Procesando de forma segura…");
+            performRemittance(button, operator, recipient, phone, amount, idempotencyKey, "");
+            return;
+        }
+
+        button.setText("Consultando titular NatCash…");
+        executor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject().put("operator", operator).put("recipientName", recipient).put("recipientPhone", phone).put("amount", amount).put("sourceCurrency", walletCurrency()).put("idempotencyKey", idempotencyKey);
+                JSONObject response = api.previewRemittance(payload);
+                JSONObject preview = response.optJSONObject("preview");
+                if (preview == null || !preview.optBoolean("recipientNameVerified", false)) throw new Exception("NatCash no devolvió un titular verificable");
+                String holder = preview.optString("accountName", "").trim();
+                String previewId = preview.optString("id", "");
+                double amountHtg = preview.optDouble("amountHTG", 0);
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText("Revisar y enviar");
+                    new AlertDialog.Builder(this)
+                            .setTitle("Titular confirmado por NatCash")
+                            .setMessage("Titular: " + holder + "\nCuenta: +509 " + phone + "\nRecibirá: " + String.format(Locale.US, "%,.2f HTG", amountHtg) + "\n\nVerifica el nombre antes de confirmar. El saldo todavía no ha sido debitado.")
+                            .setNegativeButton("Cancelar", null)
+                            .setPositiveButton("Confirmar y enviar", (dialog, which) -> performRemittance(button, operator, holder, phone, amount, idempotencyKey, previewId))
+                            .show();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> { button.setEnabled(true); button.setText("Revisar y enviar"); errorDialog("No se pudo verificar el titular", friendly(error)); });
+            }
+        });
+    }
+
+    private void performRemittance(Button button, String operator, String recipient, String phone, double amount, String idempotencyKey, String previewId) {
+        button.setEnabled(false);
         button.setText("Procesando de forma segura…");
         executor.execute(() -> {
             try {
-                JSONObject payload = new JSONObject().put("operator", operator).put("recipientName", recipient).put("recipientPhone", phone).put("amount", amount).put("sourceCurrency", walletCurrency()).put("idempotencyKey", UUID.randomUUID().toString());
+                JSONObject payload = new JSONObject().put("operator", operator).put("recipientName", recipient).put("recipientPhone", phone).put("amount", amount).put("sourceCurrency", walletCurrency()).put("idempotencyKey", idempotencyKey);
+                if (previewId != null && !previewId.isEmpty()) payload.put("previewId", previewId);
                 JSONObject response = api.sendRemittance(payload);
                 JSONObject remittance = response.optJSONObject("remittance");
                 double updatedBalance = response.optDouble("walletBalance", Double.NaN);

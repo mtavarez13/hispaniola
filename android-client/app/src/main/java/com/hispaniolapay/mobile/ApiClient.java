@@ -72,6 +72,10 @@ final class ApiClient {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances", "POST", payload, 65000);
     }
 
+    JSONObject previewRemittance(JSONObject payload) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances/preview", "POST", payload, 65000);
+    }
+
     JSONObject transferBalance(JSONObject payload) throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/transfers", "POST", payload, 30000);
     }

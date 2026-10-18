@@ -159,7 +159,6 @@ export default function HaitiRemittancesPage() {
   const [verifyCode, setVerifyCode] = useState("1111")
   const [api2Response, setApi2Response] = useState<any>(null)
   const [currentRequestId, setCurrentRequestId] = useState<number | null>(null)
-  const [autoConfirmMode, setAutoConfirmMode] = useState<boolean>(true)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   // Transactions History State
@@ -441,7 +440,8 @@ export default function HaitiRemittancesPage() {
           content: content || (operator === "MonCash" ? "Remesa MonCash HispaniolaPay" : "Transfert NatCash"),
           baseUrl: baseUrlInput || settings?.bencashBaseUrl || undefined,
           privateKey: privateKeyInput || settings?.bencashPrivateKey || undefined,
-          autoConfirm: autoConfirmMode,
+          // NatCash debe devolver el titular en requestcashin antes de que el usuario confirme.
+          autoConfirm: false,
           verifyCode: verifyCode || "1111",
           recipientName: recipientName.trim(),
         }),
@@ -1768,24 +1768,16 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                       />
                     </div>
 
-                    {/* Auto-Confirm Toggle (Evita error 'Invalid Requestid' y estado 'pending') */}
-                    <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                      <div className="space-y-0.5 pr-3">
-                        <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                          <Zap className="w-4 h-4 text-emerald-600" />
-                          Confirmación Automática Inmediata (Recomendado)
-                        </div>
-                        <p className="text-[11px] text-emerald-700 leading-snug">
-                          Ejecuta la validación y confirmación en una sola operación continua, garantizando el mismo RequestId y evitando transacciones en estado &apos;pending&apos;.
-                        </p>
+                    <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                      <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                        <UserCheck className="w-4 h-4 text-emerald-600" />
+                        {operator === "NatCash" ? "Verificación del titular antes de confirmar" : "Validación disponible en la respuesta de MonCash"}
                       </div>
-                      <input
-                        type="checkbox"
-                        id="autoConfirmMode"
-                        checked={autoConfirmMode}
-                        onChange={(e) => setAutoConfirmMode(e.target.checked)}
-                        className="h-5 w-5 accent-emerald-600 rounded cursor-pointer shrink-0"
-                      />
+                      <p className="text-[11px] text-emerald-700 leading-snug mt-1">
+                        {operator === "NatCash"
+                          ? "Primero consultaremos la cuenta y mostraremos el nombre devuelto por NatCash. El desembolso solo se ejecutará cuando confirmes ese titular."
+                          : "El API oficial de MonCash no publica una consulta independiente de titular; el nombre se mostrará únicamente cuando el proveedor lo incluya en la respuesta del envío."}
+                      </p>
                     </div>
                   </CardContent>
 
@@ -1796,10 +1788,8 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                       className={
                         !isAdmin && amountUSD > walletBalances.walletBalance
                           ? "w-full h-14 bg-slate-400 text-white font-black text-sm md:text-base gap-2 rounded-xl cursor-not-allowed opacity-80"
-                          : autoConfirmMode
-                          ? operator === "MonCash"
-                            ? "w-full h-14 bg-[#E60000] hover:bg-[#CC0000] active:bg-[#B30000] text-white font-black text-base md:text-lg gap-3 rounded-xl shadow-xl shadow-red-600/40 border-2 border-red-500 ring-4 ring-red-400/30 transition-all duration-200 transform hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden cursor-pointer"
-                            : "w-full h-14 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-base md:text-lg gap-3 rounded-xl shadow-xl shadow-emerald-600/40 border-2 border-emerald-500 ring-4 ring-emerald-400/30 transition-all duration-200 transform hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden cursor-pointer"
+                          : operator === "MonCash"
+                          ? "w-full h-14 bg-[#E60000] hover:bg-[#CC0000] active:bg-[#B30000] text-white font-black text-base md:text-lg gap-3 rounded-xl shadow-xl shadow-red-600/40 border-2 border-red-500 ring-4 ring-red-400/30 transition-all duration-200 transform hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden cursor-pointer"
                           : "w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold gap-2 text-sm shadow-md"
                       }
                     >
@@ -1807,9 +1797,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         <>
                           <RefreshCw className="w-5 h-5 animate-spin text-white" />
                           <span className="tracking-wide font-bold">
-                            {autoConfirmMode
-                              ? `Acreditando en ${operator} con BenCash...`
-                              : "Validando con BenCash..."}
+                            {operator === "NatCash" ? "Consultando titular NatCash..." : "Enviando a MonCash..."}
                           </span>
                         </>
                       ) : !isAdmin && amountUSD > walletBalances.walletBalance ? (
@@ -1819,7 +1807,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         </>
                       ) : (
                         <>
-                          {autoConfirmMode ? (
+                          {operator === "MonCash" ? (
                             <>
                               <span className="relative flex h-3.5 w-3.5 shrink-0">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-90"></span>
@@ -1827,12 +1815,12 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                               </span>
                               <Zap className="w-5 h-5 text-amber-300 animate-bounce shrink-0" />
                               <span className="tracking-wider uppercase font-black">
-                                Desembolsar Directo a Billetera Móvil ({operator})
+                                Enviar a Billetera MonCash
                               </span>
                             </>
                           ) : (
                             <>
-                              <span>Validar Cuenta y Continuar</span>
+                              <span>Consultar Titular y Continuar</span>
                               <ArrowRight className="w-4 h-4" />
                             </>
                           )}
