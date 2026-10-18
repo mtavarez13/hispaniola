@@ -43,9 +43,6 @@ export async function POST(req: NextRequest) {
     if (!/^509\d{8}$/.test(recipientPhone)) {
       return NextResponse.json({ success: false, error: 'El número NatCash debe tener 8 dígitos de Haití' }, { status: 422 });
     }
-    if (enteredRecipientName.length < 3) {
-      return NextResponse.json({ success: false, error: 'Escriba el nombre completo del destinatario' }, { status: 422 });
-    }
     if (!Number.isFinite(requestedAmount) || requestedAmount <= 0 || requestedAmount > 500000) {
       return NextResponse.json({ success: false, error: 'El monto indicado no es válido' }, { status: 422 });
     }
@@ -105,7 +102,9 @@ export async function POST(req: NextRequest) {
     const provider = await executeRequestCashIn({
       toAccountNumber: recipientPhone,
       amount: amountHTG,
-      content: `HispaniolaPay móvil - verificación de ${enteredRecipientName}`,
+      content: enteredRecipientName
+        ? `HispaniolaPay móvil - verificación de ${enteredRecipientName}`
+        : 'HispaniolaPay móvil - verificación de titular NatCash',
       baseUrl: config.baseUrl,
       privateKey: config.privateKey,
       autoConfirm: false,

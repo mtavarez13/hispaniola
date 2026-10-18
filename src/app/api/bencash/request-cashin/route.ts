@@ -178,6 +178,26 @@ export async function POST(req: NextRequest) {
     });
 
     const verifiedNatCashName = extractBencashReceiverName(result);
+    if (body.requireReceiverName === true && String(result.resultCode) === '200' && !verifiedNatCashName) {
+      const txId = String(result.result?.txId || '');
+      const originalRequestId = result.requestId || result.result?.requestId;
+      if (txId && originalRequestId) {
+        await executeConfirmCashIn({
+          requestId: originalRequestId,
+          txId,
+          isConfirm: '0',
+          baseUrl: effectiveBaseUrl,
+          privateKey: effectivePrivateKey,
+        }).catch(() => undefined);
+      }
+      return NextResponse.json({
+        resultCode: '422',
+        resultMessage: 'NatCash no devolvió el nombre del titular. La solicitud fue cancelada y no se realizó el desembolso.',
+        requestId: originalRequestId,
+        isConfirmed: false,
+        isPending: false,
+      }, { status: 422 });
+    }
     if (String(result.resultCode) === '200' && verifiedNatCashName) {
       await rememberVerifiedNatCashHolder(cleanPhone, verifiedNatCashName).catch((cacheError) => {
         console.warn('[BenCash] No se pudo guardar el titular NatCash verificado:', cacheError);

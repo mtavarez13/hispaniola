@@ -393,11 +393,11 @@ export default function HaitiRemittancesPage() {
 
   // Execute Step 1: Request Cash-In (API 1) con soporte de Auto-Confirmación
   const handleRequestCashIn = async () => {
-    if (!recipientName || !recipientName.trim()) {
+    if (operator === "MonCash" && (!recipientName || !recipientName.trim())) {
       toast({
         variant: "destructive",
         title: "Nombre de destinatario obligatorio",
-        description: "Debes escribir el nombre y apellido del destinatario. No se coloca por defecto.",
+        description: "MonCash no ofrece consulta previa; debes escribir el nombre y apellido del destinatario.",
       })
       return
     }
@@ -451,6 +451,7 @@ export default function HaitiRemittancesPage() {
           autoConfirm: false,
           verifyCode: verifyCode || "1111",
           recipientName: recipientName.trim(),
+          requireReceiverName: operator === "NatCash",
         }),
       })
 
@@ -1594,7 +1595,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                               ? "border-amber-300 bg-white"
                               : "border-blue-300 bg-white"
                           }`}
-                          required
+                          required={operator === "MonCash"}
                         />
                         <p className="text-[10px] text-muted-foreground">
                           {detectedAccount?.verified

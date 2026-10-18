@@ -1157,7 +1157,7 @@ public final class MainActivity extends Activity {
             String recipientPhone = phone.getText().toString().replaceAll("\\D", "");
             if (recipientPhone.startsWith("509")) recipientPhone = recipientPhone.substring(3);
             double value = parseAmount(amount.getText().toString());
-            if (recipient.length() < 3 || recipientPhone.length() != 8 || value < 1) { errorDialog("Revisa los datos", "Completa el nombre, un teléfono haitiano de 8 dígitos y un monto válido."); return; }
+            if (("MonCash".equals(selected[0]) && recipient.length() < 3) || recipientPhone.length() != 8 || value < 1) { errorDialog("Revisa los datos", "Completa un teléfono haitiano de 8 dígitos, un monto válido y el nombre cuando uses MonCash."); return; }
             if (value > balance) { errorDialog("Saldo insuficiente", "Disponible: " + walletMoney(balance)); return; }
             double fee = round(value * feePct / 100d);
             double valueUsd = toUsd(value, sourceCurrency, rates);
