@@ -5,6 +5,7 @@ import { authenticatedUserError, requireAuthenticatedUser } from '@/lib/server-a
 import { getPersistentBencashServerConfig } from '@/lib/server-config';
 import {
   executeRequestCashIn,
+  extractBencashReceiverName,
   formatHaitiPhoneNumber,
   moncashRequestCashIn,
 } from '@/lib/bencash/service';
@@ -266,6 +267,8 @@ export async function POST(req: NextRequest) {
 
     const completed = operator === 'MonCash' || provider?.isConfirmed === true;
     const status = completed ? 'completed' : 'pending';
+    const apiRecipientName = extractBencashReceiverName(provider);
+    const resolvedRecipientName = apiRecipientName || recipientName;
     await adminDb.runTransaction(async (transaction) => {
       transaction.update(remittanceRef, {
         status,
@@ -274,6 +277,9 @@ export async function POST(req: NextRequest) {
         providerCode,
         message: providerMessage,
         isConfirmed: completed,
+        recipientName: resolvedRecipientName,
+        recipientNameVerified: Boolean(apiRecipientName),
+        providerRecipientName: apiRecipientName || null,
         completedAt: completed ? FieldValue.serverTimestamp() : null,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -296,7 +302,7 @@ export async function POST(req: NextRequest) {
         balanceAfterUSD: reservation.newBalance,
         balanceAfter: reservation.newBalance,
         operator,
-        recipientName,
+        recipientName: resolvedRecipientName,
         recipientPhone,
         txId,
         requestId,
@@ -313,7 +319,7 @@ export async function POST(req: NextRequest) {
       userName: identity.name,
       userCode: String(identity.profile?.clientCode || ''),
       provider: operator,
-      recipientName,
+      recipientName: resolvedRecipientName,
       recipientPhone,
       amount: reservation.sourceAmount,
       currency: reservation.sourceCurrency,
@@ -330,7 +336,9 @@ export async function POST(req: NextRequest) {
         id: remittanceId,
         status,
         operator,
-        recipientName,
+        recipientName: resolvedRecipientName,
+        recipientNameVerified: Boolean(apiRecipientName),
+        providerRecipientName: apiRecipientName || undefined,
         recipientPhone,
         amount: reservation.sourceAmount,
         sourceCurrency: reservation.sourceCurrency,

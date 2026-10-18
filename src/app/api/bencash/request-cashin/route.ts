@@ -7,6 +7,7 @@ import {
   formatHaitiPhoneNumber,
   rememberTxRequestId,
   BencashDepositService,
+  extractBencashReceiverName,
 } from '@/lib/bencash/service';
 import { getPersistentBencashServerConfig, saveBencashServerConfig } from '@/lib/server-config';
 
@@ -88,12 +89,14 @@ export async function POST(req: NextRequest) {
       const isSuccess = String(moncashRes.resultCode) === '200' || String(moncashRes.resultCode) === '0';
       const extractedTxId = moncashRes.result?.txId || '';
       const resolvedReqId = moncashRes.requestId || requestId;
+      const apiReceiverName = extractBencashReceiverName(moncashRes);
+      const resolvedReceiverName = apiReceiverName || String(body.recipientName || '').trim() || 'Beneficiario Digicel MonCash';
 
       if (extractedTxId && resolvedReqId) {
         rememberTxRequestId(extractedTxId, Number(resolvedReqId), {
           operator: 'MonCash',
           toAccountNumber: cleanPhone,
-          recipientName: body.recipientName || 'Beneficiario Digicel MonCash',
+          recipientName: resolvedReceiverName,
         });
       }
 
@@ -112,6 +115,7 @@ export async function POST(req: NextRequest) {
           isPending: false,
           endpointUsed: '/api/channel/moncash/requestcashin',
           requestId: resolvedReqId,
+          recipientNameVerified: Boolean(apiReceiverName),
           result: {
             ...moncashRes.result,
             txId: extractedTxId,
@@ -122,7 +126,7 @@ export async function POST(req: NextRequest) {
             receiver: {
               accountId: cleanPhone,
               accountNumber: cleanPhone,
-              accountName: body.recipientName || moncashRes.result?.receiver?.accountName || 'Beneficiario Digicel MonCash',
+              accountName: resolvedReceiverName,
               accountCurrency: 'HTG',
             },
           },
@@ -137,6 +141,7 @@ export async function POST(req: NextRequest) {
         isConfirmed: false,
         isPending: false,
         endpointUsed: '/api/channel/moncash/requestcashin',
+        recipientNameVerified: Boolean(apiReceiverName),
         result: {
           ...moncashRes.result,
           txId: extractedTxId,
@@ -147,7 +152,7 @@ export async function POST(req: NextRequest) {
           receiver: {
             accountId: cleanPhone,
             accountNumber: cleanPhone,
-            accountName: body.recipientName || moncashRes.result?.receiver?.accountName || 'Beneficiario Digicel MonCash',
+            accountName: resolvedReceiverName,
             accountCurrency: 'HTG',
           },
         },

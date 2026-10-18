@@ -1266,8 +1266,11 @@ public final class MainActivity extends Activity {
                     String txId = remittance == null ? "" : remittance.optString("txId");
                     String reference = remittance == null ? "" : remittance.optString("id");
                     String status = remittance == null ? "procesando" : remittance.optString("status", "procesando");
-                    AlertDialog.Builder completedDialog = new AlertDialog.Builder(this).setTitle("¡Remesa recibida!")
-                            .setMessage("Estado: " + status.toUpperCase(Locale.ROOT) + "\nReferencia: " + (txId.isEmpty() ? reference : txId) + "\n\nPuedes consultar esta operación en Historial.")
+                    String holder = remittance == null ? recipient : remittance.optString("recipientName", recipient);
+                    boolean holderVerified = remittance != null && remittance.optBoolean("recipientNameVerified", false);
+                    String holderLabel = holderVerified ? "Titular confirmado por API" : "Destinatario";
+                    AlertDialog.Builder completedDialog = new AlertDialog.Builder(this).setTitle("¡Remesa enviada!")
+                            .setMessage(holderLabel + ": " + holder + "\nOperador: " + operator + "\nEstado: " + status.toUpperCase(Locale.ROOT) + "\nReferencia: " + (txId.isEmpty() ? reference : txId) + "\n\nPuedes consultar esta operación en Historial.")
                             .setCancelable(false).setPositiveButton("Ver saldo actualizado", (d, w) -> showHome());
                     if (receiptEnabled() && remittance != null) completedDialog.setNeutralButton("Recibo " + receiptPaperWidthMm() + " mm", (dialog, which) -> receiptManager.showActions(remittance, accountData));
                     completedDialog.show();

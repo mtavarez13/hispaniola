@@ -57,6 +57,33 @@ import { detectHaitiOperator, formatHaitiPhoneNumber } from "@/lib/bencash/utils
 import { HaitiDepositTransaction } from "@/lib/types"
 import { formatNumber } from "@/lib/utils"
 
+const getReceiverNameFromApi = (payload: any): string => {
+  const candidates = [
+    payload?.result?.receiver?.accountName,
+    payload?.receiver?.accountName,
+    payload?.result?.accountName,
+    payload?.accountName,
+    payload?.result?.rawResponse?.result?.receiver?.accountName,
+    payload?.result?.rawResponse?.result?.accountName,
+    payload?.result?.rawResponse?.receiver?.accountName,
+    payload?.result?.rawResponse?.accountName,
+    payload?.result?.rawResponse?.data?.receiverName,
+    payload?.result?.rawResponse?.data?.beneficiaryName,
+    payload?.result?.rawResponse?.data?.customerName,
+    payload?.rawResponse?.result?.receiver?.accountName,
+    payload?.rawResponse?.receiver?.accountName,
+    payload?.result?.receiverName,
+    payload?.result?.beneficiaryName,
+    payload?.result?.customerName,
+  ]
+
+  for (const candidate of candidates) {
+    const name = String(candidate || "").trim()
+    if (name && !/^(null|undefined|n\/a|beneficiario)$/i.test(name)) return name.slice(0, 120)
+  }
+  return ""
+}
+
 export default function HaitiRemittancesPage() {
   const { settings, updateSettings } = useSystemSettings()
   const { user, userProfile } = useAuth()
@@ -416,19 +443,35 @@ export default function HaitiRemittancesPage() {
           privateKey: privateKeyInput || settings?.bencashPrivateKey || undefined,
           autoConfirm: autoConfirmMode,
           verifyCode: verifyCode || "1111",
+          recipientName: recipientName.trim(),
         }),
       })
 
       const data = await res.json()
+      const apiRecipientName = getReceiverNameFromApi(data)
+      const effectiveRecipientName = apiRecipientName || recipientName.trim()
+
+      if (apiRecipientName) {
+        setRecipientName(apiRecipientName)
+        setDetectedAccount({
+          name: apiRecipientName,
+          status: "Active",
+          currency: "HTG",
+          kycLevel: "Titular confirmado por API",
+          verified: true,
+          network: operator === "MonCash" ? "Digicel MonCash" : "Natcom NatCash",
+        })
+      }
 
       // CASO A: Auto-confirmado exitosamente de inmediato o MonCash (MonCash es flujo directo acreditado con código 200)
       if (data.resultCode === "200" && (data.isConfirmed || operator === "MonCash" || data.isMoncash)) {
         const resolvedReqId = data.requestId || data.result?.requestId || Math.floor(100000000 + Math.random() * 900000000)
         setCurrentRequestId(resolvedReqId)
-        setApi1Response({ ...data.result, requestId: resolvedReqId })
+        setApi1Response({ ...data.result, requestId: resolvedReqId, recipientNameVerified: Boolean(apiRecipientName) })
         setApi2Response({
           ...data.result,
           requestId: resolvedReqId,
+          recipientNameVerified: Boolean(apiRecipientName),
           toPhone: cleanPhone,
           isConfirmed: true,
           isPending: false,
@@ -443,7 +486,7 @@ export default function HaitiRemittancesPage() {
           transactionId: data.result?.transactionId || data.result?.txId || `TX-${Date.now()}`,
           operator: operator,
           toAccountNumber: cleanPhone,
-          recipientName: recipientName.trim(),
+          recipientName: effectiveRecipientName,
           recipientAccountId: data.result?.receiver?.accountId,
           amountUSD: amountUSD,
           amountHTG: calculatedHTG,
@@ -480,13 +523,13 @@ export default function HaitiRemittancesPage() {
             clientId: user.uid,
             type: operator === "MonCash" ? "remittance_moncash" : "remittance_natcash",
             title: `Envío ${operator} Haití`,
-            description: `Depósito directo a ${recipientName || cleanPhone} (${operator})`,
+            description: `Depósito directo a ${effectiveRecipientName || cleanPhone} (${operator})`,
             amountUSD: amountUSD,
             direction: "out",
             targetPocket: "main",
             date: new Date().toISOString(),
             referenceId: confirmedRecord.txId,
-            recipient: `${recipientName || cleanPhone} (${operator})`,
+            recipient: `${effectiveRecipientName || cleanPhone} (${operator})`,
             status: "completed",
             receiptCode: confirmedRecord.transactionId || confirmedRecord.txId,
           })
@@ -499,7 +542,7 @@ export default function HaitiRemittancesPage() {
             amountUSD,
             amountHTG: calculatedHTG,
             recipientPhone: cleanPhone,
-            recipientName: recipientName || confirmedRecord.recipientName,
+            recipientName: effectiveRecipientName,
             senderPhone,
             senderName,
             operator,
@@ -508,9 +551,9 @@ export default function HaitiRemittancesPage() {
 
         toast({
           title: operator === "MonCash" ? "¡Depósito Enviado a MonCash!" : "¡Depósito Acreditado Exitosamente!",
-          description: operator === "MonCash"
-            ? `Solicitud enviada a MonCash API (txId: ${confirmedRecord.txId}). Fondos en proceso de acreditación.`
-            : `Transacción completada en BenCash con RequestId ${resolvedReqId}. Fondos entregados en ${operator}.`,
+          description: apiRecipientName
+            ? `Titular ${effectiveRecipientName} confirmado por API. Fondos entregados en ${operator}.`
+            : `Remesa enviada a ${effectiveRecipientName} por ${operator}. El proveedor no devolvió un nombre verificable.`,
         })
         return
       }
@@ -521,7 +564,7 @@ export default function HaitiRemittancesPage() {
         if (resolvedReqId) {
           setCurrentRequestId(resolvedReqId)
         }
-        setApi1Response({ ...data.result, requestId: resolvedReqId })
+        setApi1Response({ ...data.result, requestId: resolvedReqId, recipientNameVerified: Boolean(apiRecipientName) })
         setCashInStep("confirm")
 
         // Registrar en historial como 'pending' con el requestId exacto para que nunca quede en el limbo
@@ -532,7 +575,7 @@ export default function HaitiRemittancesPage() {
           transactionId: data.result.transactionId,
           operator: operator,
           toAccountNumber: cleanPhone,
-          recipientName: recipientName.trim(),
+          recipientName: effectiveRecipientName,
           recipientAccountId: data.result.receiver?.accountId,
           amountUSD: amountUSD,
           amountHTG: calculatedHTG,
@@ -612,7 +655,27 @@ export default function HaitiRemittancesPage() {
 
       const data = await res.json()
       if (data.resultCode === "200" && data.result) {
-        setApi2Response(data.result)
+        const apiRecipientName = getReceiverNameFromApi(data) || getReceiverNameFromApi(api1Response)
+        const effectiveRecipientName = apiRecipientName || recipientName.trim()
+        if (apiRecipientName) {
+          setRecipientName(apiRecipientName)
+          setDetectedAccount({
+            name: apiRecipientName,
+            status: "Active",
+            currency: "HTG",
+            kycLevel: "Titular confirmado por API",
+            verified: true,
+            network: operator === "MonCash" ? "Digicel MonCash" : "Natcom NatCash",
+          })
+        }
+        setApi2Response({
+          ...data.result,
+          recipientNameVerified: Boolean(apiRecipientName),
+          receiver: data.result.receiver || api1Response.receiver || {
+            accountName: effectiveRecipientName,
+            accountNumber: formatHaitiPhoneNumber(phone),
+          },
+        })
         setCashInStep("success")
 
         // Actualizar el registro a confirmado en el historial
@@ -623,6 +686,7 @@ export default function HaitiRemittancesPage() {
               status: "confirmed" as const,
               transactionId: data.result.transactionId || t.transactionId || `TX-${Date.now()}`,
               requestId: activeReqId || t.requestId,
+              recipientName: effectiveRecipientName,
             }
           }
           return t
@@ -636,7 +700,7 @@ export default function HaitiRemittancesPage() {
             transactionId: data.result.transactionId || `TX-${Date.now()}`,
             operator: operator,
             toAccountNumber: formatHaitiPhoneNumber(phone),
-            recipientName: recipientName.trim(),
+            recipientName: effectiveRecipientName,
             recipientAccountId: api1Response.receiver?.accountId,
             amountUSD: amountUSD,
             amountHTG: calculatedHTG,
@@ -675,13 +739,13 @@ export default function HaitiRemittancesPage() {
             clientId: user.uid,
             type: operator === "MonCash" ? "remittance_moncash" : "remittance_natcash",
             title: `Envío ${operator} Haití`,
-            description: `Transferencia confirmada a ${recipientName || formatHaitiPhoneNumber(phone)} (${operator})`,
+            description: `Transferencia confirmada a ${effectiveRecipientName || formatHaitiPhoneNumber(phone)} (${operator})`,
             amountUSD: amountUSD,
             direction: "out",
             targetPocket: "main",
             date: new Date().toISOString(),
             referenceId: data.result.txId || api1Response.txId,
-            recipient: `${recipientName || formatHaitiPhoneNumber(phone)} (${operator})`,
+            recipient: `${effectiveRecipientName || formatHaitiPhoneNumber(phone)} (${operator})`,
             status: "completed",
             receiptCode: data.result.transactionId || api1Response.txId,
           })
@@ -694,7 +758,7 @@ export default function HaitiRemittancesPage() {
             amountUSD,
             amountHTG: calculatedHTG,
             recipientPhone: formatHaitiPhoneNumber(phone),
-            recipientName: recipientName.trim(),
+            recipientName: effectiveRecipientName,
             senderPhone,
             senderName,
             operator,
@@ -703,7 +767,9 @@ export default function HaitiRemittancesPage() {
 
         toast({
           title: "¡Depósito Confirmado con Éxito!",
-          description: `Fondos acreditados directamente en la cuenta ${operator}.`,
+          description: apiRecipientName
+            ? `Titular ${effectiveRecipientName} confirmado por API. Fondos acreditados en ${operator}.`
+            : `Fondos acreditados a ${effectiveRecipientName} en ${operator}.`,
         })
       } else {
         toast({
@@ -1939,6 +2005,16 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                     </div>
 
                     <div className="p-6 rounded-2xl bg-secondary/50 border border-border text-left space-y-3 font-mono text-xs">
+                      <div className="flex justify-between gap-4 border-b border-emerald-200 bg-emerald-50 -mx-3 -mt-3 px-3 py-3 rounded-xl">
+                        <span className="text-emerald-800 font-sans font-semibold">
+                          {api2Response?.recipientNameVerified || api1Response?.recipientNameVerified
+                            ? "Titular confirmado por API:"
+                            : "Destinatario:"}
+                        </span>
+                        <span className="font-black text-emerald-950 text-right uppercase">
+                          {api2Response?.receiver?.accountName || api1Response?.receiver?.accountName || recipientName}
+                        </span>
+                      </div>
                       <div className="flex justify-between border-b border-border/60 pb-2">
                         <span className="text-muted-foreground font-sans">Monto Acreditado:</span>
                         <span className="font-bold text-base text-accent font-sans" suppressHydrationWarning>{formatNumber(calculatedHTG)} HTG</span>

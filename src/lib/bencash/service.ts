@@ -1742,6 +1742,34 @@ export function formatHaitiPhoneNumber(phone: string): string {
   return clean;
 }
 
+/** Extracts the real account holder returned by NatCash/MonCash response variants. */
+export function extractBencashReceiverName(payload: any): string {
+  const candidates = [
+    payload?.result?.receiver?.accountName,
+    payload?.receiver?.accountName,
+    payload?.result?.accountName,
+    payload?.accountName,
+    payload?.result?.rawResponse?.result?.receiver?.accountName,
+    payload?.result?.rawResponse?.result?.accountName,
+    payload?.result?.rawResponse?.receiver?.accountName,
+    payload?.result?.rawResponse?.accountName,
+    payload?.result?.rawResponse?.data?.receiver?.accountName,
+    payload?.result?.rawResponse?.data?.receiverName,
+    payload?.result?.rawResponse?.data?.beneficiaryName,
+    payload?.result?.rawResponse?.data?.customerName,
+    payload?.rawResponse?.result?.receiver?.accountName,
+    payload?.rawResponse?.receiver?.accountName,
+    payload?.result?.receiverName,
+    payload?.result?.beneficiaryName,
+    payload?.result?.customerName,
+  ];
+  for (const candidate of candidates) {
+    const name = String(candidate || '').trim();
+    if (name && !/^(null|undefined|n\/a|beneficiario)$/i.test(name)) return name.slice(0, 120);
+  }
+  return '';
+}
+
 export function detectHaitiOperator(phone: string): {
   operator: 'MonCash' | 'NatCash' | 'Unknown';
   logoColor: string;
