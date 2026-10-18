@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { adminDb } from '@/lib/firebase-admin';
+import { normalizeBencashApiBaseUrl } from '@/lib/bencash/client';
 
 export interface BencashServerConfig {
   baseUrl: string;
@@ -37,7 +38,7 @@ const WHATSAPP_CONFIG_DOCUMENT = adminDb.collection('server_config').doc('whatsa
 const DEFAULT_BENCASH_BASE_URL = 'https://reseller.bencashgroup.com/api/';
 
 const normalizeBencashBaseUrl = (value: string | undefined) =>
-  `${(value || DEFAULT_BENCASH_BASE_URL).trim().replace(/\/+$/, '')}/`;
+  normalizeBencashApiBaseUrl(value || DEFAULT_BENCASH_BASE_URL);
 
 /**
  * Obtiene la configuración de BenCash asegurando persistencia en servidor

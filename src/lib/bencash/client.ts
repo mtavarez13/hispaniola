@@ -8,6 +8,41 @@ import crypto from 'crypto';
 export const BENCASH_OFFICIAL_PANEL_URL = 'https://sellertest.bencashgroup.com';
 export const BENCASH_DEFAULT_BASE_URL = 'https://reseller.bencashgroup.com/api/';
 
+/**
+ * Convierte URLs del panel Seller en la URL real del API Deposit Channel.
+ * El panel devuelve HTML con HTTP 200, por lo que nunca debe usarse como API.
+ */
+export function normalizeBencashApiBaseUrl(value?: string): string {
+  let raw = (value || BENCASH_DEFAULT_BASE_URL).trim();
+  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+
+  try {
+    const parsed = new URL(raw);
+    const hostname = parsed.hostname.toLowerCase();
+    const productionPanels = new Set(['seller.bencashgroup.com', 'www.seller.bencashgroup.com']);
+    const testPanels = new Set(['sellertest.bencashgroup.com', 'seller.test.bencashgroup.com']);
+
+    if (productionPanels.has(hostname)) {
+      parsed.hostname = 'reseller.bencashgroup.com';
+      parsed.pathname = '/api/';
+    } else if (testPanels.has(hostname)) {
+      parsed.hostname = 'reseller.test.bencashgroup.com';
+      parsed.pathname = '/api/';
+    } else if (hostname === 'reseller.bencashgroup.com' || hostname === 'reseller.test.bencashgroup.com') {
+      const path = parsed.pathname.toLowerCase();
+      if (path === '/' || path === '' || path.includes('/swagger') || path.includes('/api/channel')) {
+        parsed.pathname = '/api/';
+      }
+    }
+
+    parsed.search = '';
+    parsed.hash = '';
+    return `${parsed.toString().replace(/\/+$/, '')}/`;
+  } catch {
+    return BENCASH_DEFAULT_BASE_URL;
+  }
+}
+
 export interface BencashClientConfig {
   baseUrl?: string;
   privateKey?: string;
@@ -122,7 +157,7 @@ export class BencashClient {
   private privateKey: string;
 
   constructor(config?: BencashClientConfig) {
-    this.baseUrl = (
+    this.baseUrl = normalizeBencashApiBaseUrl(
       config?.baseUrl ||
       process.env.BENCASH_BASE_URL ||
       BENCASH_DEFAULT_BASE_URL

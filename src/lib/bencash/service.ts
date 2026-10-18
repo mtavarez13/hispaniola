@@ -6,12 +6,14 @@ import {
   getBencashClient,
   BENCASH_OFFICIAL_PANEL_URL,
   BENCASH_DEFAULT_BASE_URL,
+  normalizeBencashApiBaseUrl,
 } from './client';
 export {
   BencashClient,
   getBencashClient,
   BENCASH_OFFICIAL_PANEL_URL,
   BENCASH_DEFAULT_BASE_URL,
+  normalizeBencashApiBaseUrl,
 };
 export type {
   BencashClientConfig,
@@ -132,7 +134,7 @@ export function resolveChannelEndpoint(
   baseUrl: string,
   action: 'requestcashin' | 'confirmcashin' | 'balance'
 ): string {
-  let clean = (baseUrl || BENCASH_DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
+  let clean = normalizeBencashApiBaseUrl(baseUrl).replace(/\/+$/, '');
 
   if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
     clean = `https://${clean}`;
@@ -328,7 +330,7 @@ export class BencashDepositService {
   private static runtimePrivateKey: string | null = null;
 
   public static setRuntimeCredentials(baseUrl?: string, privateKey?: string) {
-    if (baseUrl) BencashDepositService.runtimeBaseUrl = baseUrl.trim().replace(/\/+$/, '');
+    if (baseUrl) BencashDepositService.runtimeBaseUrl = normalizeBencashApiBaseUrl(baseUrl).replace(/\/+$/, '');
     if (privateKey !== undefined) BencashDepositService.runtimePrivateKey = privateKey.trim();
     saveBencashServerConfig({
       baseUrl: BencashDepositService.runtimeBaseUrl || undefined,
@@ -351,7 +353,7 @@ export class BencashDepositService {
 
   constructor(config?: BencashServiceConfig) {
     const serverConfig = getBencashServerConfig();
-    this.baseUrl = (
+    this.baseUrl = normalizeBencashApiBaseUrl(
       config?.baseUrl ||
       BencashDepositService.runtimeBaseUrl ||
       serverConfig.baseUrl ||
@@ -1173,7 +1175,8 @@ export class BencashDepositService {
     timeoutMs?: number;
   }): Promise<PingDiagnosticResult> {
     const startTime = Date.now();
-    const rawBaseUrl = (options?.baseUrl || this.baseUrl || BENCASH_DEFAULT_BASE_URL).trim();
+    const requestedBaseUrl = (options?.baseUrl || this.baseUrl || BENCASH_DEFAULT_BASE_URL).trim();
+    const rawBaseUrl = normalizeBencashApiBaseUrl(requestedBaseUrl);
     const key = options?.privateKey || this.privateKey;
     const timeoutMs = options?.timeoutMs || 15000;
 
@@ -1208,6 +1211,7 @@ export class BencashDepositService {
       let channelStatusText = '';
       let channelResponseBody: any = null;
       let channelError = '';
+      let channelReturnedHtml = false;
 
       const requestId = generateUniqueRequestId();
       const timestamp = Date.now();
@@ -1276,10 +1280,15 @@ export class BencashDepositService {
             channelStatus = channelRes.status;
             channelStatusText = channelRes.statusText;
             const rawText = await channelRes.text();
+            const contentType = channelRes.headers.get('content-type') || '';
+            channelReturnedHtml = contentType.toLowerCase().includes('text/html') || /^\s*<!doctype html|^\s*<html/i.test(rawText);
             try {
               channelResponseBody = JSON.parse(rawText);
             } catch {
               channelResponseBody = rawText.slice(0, 300);
+            }
+            if (channelReturnedHtml) {
+              channelError = 'La URL respondió con la página HTML del panel Seller, no con el API JSON de BenCash.';
             }
           } catch (err: any) {
             channelError = err?.name === 'AbortError' ? `Canal timeout (${timeoutMs}ms)` : (err?.message || 'Channel connection error');
@@ -1297,7 +1306,10 @@ export class BencashDepositService {
       let explanation = '';
       let isSuccess = false;
 
-      if (channelStatus === 200) {
+      if (channelStatus === 200 && channelReturnedHtml) {
+        isSuccess = false;
+        explanation = `URL de API incorrecta: el servidor respondió con una página HTML en vez de JSON. Utilice ${BENCASH_DEFAULT_BASE_URL}.`;
+      } else if (channelStatus === 200) {
         const code = String(channelResponseBody?.resultCode || '');
         const msg = String(channelResponseBody?.message || '');
         const result = String(channelResponseBody?.result || '');
@@ -1332,7 +1344,7 @@ export class BencashDepositService {
       return {
         success: isSuccess,
         reachable: isReachable,
-        endpoint: originUrl,
+        endpoint: rawBaseUrl,
         channelEndpoint,
         swaggerEndpoint,
         latencyMs,
