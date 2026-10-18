@@ -10,6 +10,7 @@ import {
   formatHaitiPhoneNumber,
 } from '@/lib/bencash/service';
 import { convertCurrency, currencySymbol, fromUsd, getEffectiveRates, normalizeWalletCurrency, toUsd } from '@/lib/currency';
+import { rememberVerifiedNatCashHolder } from '@/lib/bencash/account-holder-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,6 +132,10 @@ export async function POST(req: NextRequest) {
         error: 'NatCash aceptó la solicitud, pero no devolvió el nombre del titular. La remesa no fue confirmada.',
       }, { status: 422 });
     }
+
+    await rememberVerifiedNatCashHolder(recipientPhone, accountName).catch((cacheError) => {
+      console.warn('[Mobile remittance preview] No se pudo guardar el titular NatCash:', cacheError);
+    });
 
     const previewId = `${identity.uid}_${idempotencyKey}`;
     await adminDb.collection('mobile_remittance_previews').doc(previewId).set({

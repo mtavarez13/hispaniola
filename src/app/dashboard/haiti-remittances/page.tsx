@@ -332,17 +332,24 @@ export default function HaitiRemittancesPage() {
     const timer = setTimeout(async () => {
       setAccountLookupLoading(true)
       try {
-        const res = await fetch(`/api/bencash/lookup-account?phone=${encodeURIComponent(clean)}`)
+        const idToken = await user?.getIdToken()
+        if (!idToken) return
+        const res = await fetch(`/api/bencash/lookup-account?phone=${encodeURIComponent(clean)}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        })
         const data = await res.json()
         if (data.success && data.accountHolder && data.valid) {
           setDetectedAccount(data.accountHolder)
+          if (data.operator === "NatCash" && data.accountHolder.verified) {
+            setRecipientName(data.accountHolder.name)
+          }
           if (data.operator === "MonCash" || data.operator === "NatCash") {
             if (!isManualOperator) {
               setOperator(data.operator)
             }
           }
-          // El nombre del destinatario se debe escribir manualmente, no colocar por defecto
-          // Solo guardamos el titular detectado para verificación informativa
+        } else {
+          setDetectedAccount(null)
         }
       } catch (err) {
         console.warn("Error buscando titular de cuenta:", err)
@@ -352,7 +359,7 @@ export default function HaitiRemittancesPage() {
     }, 280)
 
     return () => clearTimeout(timer)
-  }, [phone, isManualOperator])
+  }, [phone, isManualOperator, user])
 
   // Check API server status
   useEffect(() => {
@@ -1554,10 +1561,48 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                           onChange={(e) => {
                             setPhone(e.target.value)
                             setIsManualOperator(false)
+                            setRecipientName("")
+                            setDetectedAccount(null)
                           }}
                           placeholder="50940885084"
                           className="pl-10 h-12 text-lg font-bold tracking-wider"
                         />
+                      </div>
+
+                      <div className="space-y-1.5 rounded-xl border border-blue-200 bg-blue-50/50 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <Label htmlFor="recipientName" className="text-xs font-bold text-primary flex items-center gap-1">
+                            <span>Nombre del Destinatario</span>
+                            <span className="text-red-500 font-bold">*</span>
+                          </Label>
+                          {detectedAccount?.verified && (
+                            <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
+                              <CheckCircle2 className="w-3 h-3 mr-1" /> Verificado por NatCash
+                            </Badge>
+                          )}
+                        </div>
+                        <Input
+                          id="recipientName"
+                          value={recipientName}
+                          onChange={(e) => setRecipientName(e.target.value)}
+                          placeholder={operator === "NatCash" ? "Se completará automáticamente si ya fue verificado" : "Escribe el nombre y apellido"}
+                          readOnly={Boolean(operator === "NatCash" && detectedAccount?.verified)}
+                          className={`h-11 text-sm font-bold ${
+                            detectedAccount?.verified
+                              ? "border-emerald-400 bg-emerald-50 text-emerald-950"
+                              : !recipientName.trim()
+                              ? "border-amber-300 bg-white"
+                              : "border-blue-300 bg-white"
+                          }`}
+                          required
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          {detectedAccount?.verified
+                            ? "Nombre recuperado automáticamente de una validación reciente del API NatCash."
+                            : operator === "NatCash"
+                            ? "Si es un número nuevo, NatCash confirmará el titular en el siguiente paso antes de desembolsar."
+                            : "MonCash no ofrece consulta previa de titular por número."}
+                        </p>
                       </div>
 
                       {/* Estado de consulta del titular en Haití */}
@@ -1697,45 +1742,8 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         </div>
                       </div>
 
-                      {/* Fila 2: Receptor (Nombre del Beneficiario y Concepto) */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="recipientName" className="text-xs font-bold text-primary flex items-center gap-1">
-                              <span>Nombre del Destinatario</span>
-                              <span className="text-red-500 font-bold">*</span>
-                            </Label>
-                            {detectedAccount && detectedAccount.name && detectedAccount.name !== "Número incompleto" && (
-                              <span className="text-[10px] text-slate-500 font-medium">
-                                Titular de línea: {detectedAccount.name}
-                              </span>
-                            )}
-                          </div>
-                          <Input
-                            id="recipientName"
-                            value={recipientName}
-                            onChange={(e) => setRecipientName(e.target.value)}
-                            placeholder="Escribe el nombre y apellido del destinatario"
-                            className={`h-10 text-xs font-semibold ${
-                              !recipientName.trim()
-                                ? "border-amber-300 focus-visible:ring-amber-400 bg-amber-50/20"
-                                : "border-emerald-400 bg-white"
-                            }`}
-                            required
-                          />
-                          {!recipientName.trim() ? (
-                            <p className="text-[10px] text-amber-700 font-medium flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
-                              Debe escribir el nombre del destinatario (no se coloca por defecto).
-                            </p>
-                          ) : (
-                            <p className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                              Destinatario ingresado correctamente.
-                            </p>
-                          )}
-                        </div>
-                        <div className="space-y-1.5">
+                      {/* Concepto de la remesa */}
+                      <div className="space-y-1.5">
                           <Label htmlFor="content" className="text-xs font-semibold">Concepto / Mensaje</Label>
                           <Input
                             id="content"
@@ -1744,7 +1752,6 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                             placeholder="transfer / ayuda familiar"
                             className="h-10 text-xs"
                           />
-                        </div>
                       </div>
                     </div>
 

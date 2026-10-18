@@ -76,6 +76,11 @@ final class ApiClient {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances/preview", "POST", payload, 65000);
     }
 
+    JSONObject lookupRemittanceAccount(String phone) throws Exception {
+        return authorizedRequest(BuildConfig.APP_URL + "/api/bencash/lookup-account?phone="
+                + URLEncoder.encode(phone, "UTF-8"), "GET", null, 25000);
+    }
+
     JSONObject transferBalance(JSONObject payload) throws Exception {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/transfers", "POST", payload, 30000);
     }

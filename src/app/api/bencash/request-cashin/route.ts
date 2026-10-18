@@ -10,6 +10,7 @@ import {
   extractBencashReceiverName,
 } from '@/lib/bencash/service';
 import { getPersistentBencashServerConfig, saveBencashServerConfig } from '@/lib/server-config';
+import { rememberVerifiedNatCashHolder } from '@/lib/bencash/account-holder-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,6 +176,13 @@ export async function POST(req: NextRequest) {
       autoConfirm: autoConfirm !== undefined ? Boolean(autoConfirm) : false,
       verifyCode: verifyCode || '1111',
     });
+
+    const verifiedNatCashName = extractBencashReceiverName(result);
+    if (String(result.resultCode) === '200' && verifiedNatCashName) {
+      await rememberVerifiedNatCashHolder(cleanPhone, verifiedNatCashName).catch((cacheError) => {
+        console.warn('[BenCash] No se pudo guardar el titular NatCash verificado:', cacheError);
+      });
+    }
 
     return NextResponse.json({
       ...result,

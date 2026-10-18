@@ -12,6 +12,7 @@ import {
 } from '@/lib/bencash/service';
 import { convertCurrency, currencySymbol, fromUsd, getEffectiveRates, normalizeWalletCurrency, toUsd, type WalletCurrency } from '@/lib/currency';
 import { enqueueRemotePrintJob } from '@/lib/remote-print';
+import { rememberVerifiedNatCashHolder } from '@/lib/bencash/account-holder-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -319,6 +320,11 @@ export async function POST(req: NextRequest) {
     const status = completed ? 'completed' : 'pending';
     const apiRecipientName = extractBencashReceiverName(provider);
     const resolvedRecipientName = apiRecipientName || recipientName;
+    if (operator === 'NatCash' && apiRecipientName) {
+      await rememberVerifiedNatCashHolder(recipientPhone, apiRecipientName).catch((cacheError) => {
+        console.warn('[Mobile remittance] No se pudo guardar el titular NatCash:', cacheError);
+      });
+    }
     await adminDb.runTransaction(async (transaction) => {
       transaction.update(remittanceRef, {
         status,
