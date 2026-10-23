@@ -77,8 +77,9 @@ final class ApiClient {
     }
 
     JSONObject lookupRemittanceAccount(String phone) throws Exception {
-        return authorizedRequest(BuildConfig.APP_URL + "/api/bencash/lookup-account?phone="
-                + URLEncoder.encode(phone, "UTF-8"), "GET", null, 25000);
+        JSONObject payload = new JSONObject();
+        payload.put("phone", phone);
+        return authorizedRequest(BuildConfig.APP_URL + "/api/bencash/lookup-account", "POST", payload, 45000);
     }
 
     JSONObject transferBalance(JSONObject payload) throws Exception {

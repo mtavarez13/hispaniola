@@ -138,6 +138,7 @@ export default function HaitiRemittancesPage() {
 
   // Account & Operator Detection State
   const [accountLookupLoading, setAccountLookupLoading] = useState<boolean>(false)
+  const [accountLookupMessage, setAccountLookupMessage] = useState<string>("")
   const [detectedAccount, setDetectedAccount] = useState<{
     name: string
     status: string
@@ -308,6 +309,7 @@ export default function HaitiRemittancesPage() {
     if (!phone) {
       setDetectedAccount(null)
       setDetectedOperatorInfo(null)
+      setAccountLookupMessage("")
       return
     }
 
@@ -325,21 +327,29 @@ export default function HaitiRemittancesPage() {
     const local = clean.startsWith("509") ? clean.slice(3) : clean
     if (local.length < 8) {
       setDetectedAccount(null)
+      setAccountLookupMessage("")
       return
     }
 
     // Debounce lookup to avoid excessive requests while typing
     const timer = setTimeout(async () => {
       setAccountLookupLoading(true)
+      setAccountLookupMessage("Consultando el titular directamente con NatCash...")
       try {
         const idToken = await user?.getIdToken()
         if (!idToken) return
-        const res = await fetch(`/api/bencash/lookup-account?phone=${encodeURIComponent(clean)}`, {
-          headers: { Authorization: `Bearer ${idToken}` },
+        const res = await fetch('/api/bencash/lookup-account', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phone: clean }),
         })
         const data = await res.json()
         if (data.success && data.accountHolder && data.valid) {
           setDetectedAccount(data.accountHolder)
+          setAccountLookupMessage(data.message || "Titular verificado por NatCash.")
           if (data.operator === "NatCash" && data.accountHolder.verified) {
             setRecipientName(data.accountHolder.name)
           }
@@ -350,13 +360,16 @@ export default function HaitiRemittancesPage() {
           }
         } else {
           setDetectedAccount(null)
+          setAccountLookupMessage(data.message || "NatCash no pudo identificar el titular de este número.")
         }
       } catch (err) {
         console.warn("Error buscando titular de cuenta:", err)
+        setDetectedAccount(null)
+        setAccountLookupMessage("No fue posible consultar NatCash. Intenta nuevamente.")
       } finally {
         setAccountLookupLoading(false)
       }
-    }, 280)
+    }, 650)
 
     return () => clearTimeout(timer)
   }, [phone, isManualOperator, user])
@@ -1599,9 +1612,9 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         />
                         <p className="text-[10px] text-muted-foreground">
                           {detectedAccount?.verified
-                            ? "Nombre recuperado automáticamente de una validación reciente del API NatCash."
+                            ? "Nombre recuperado y verificado automáticamente por el API NatCash."
                             : operator === "NatCash"
-                            ? "Si es un número nuevo, NatCash confirmará el titular en el siguiente paso antes de desembolsar."
+                            ? accountLookupMessage || "Completa el número para consultar el titular en NatCash."
                             : "MonCash no ofrece consulta previa de titular por número."}
                         </p>
                       </div>

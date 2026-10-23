@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useAuth } from "@/lib/auth-context"
 import { CalculatorCard } from "@/components/remittance/calculator-card"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -32,6 +33,7 @@ import { formatNumber } from "@/lib/utils"
 type Step = 'calculator' | 'delivery_method' | 'recipient' | 'bencash_confirm' | 'success'
 
 export default function SendMoneyPage() {
+  const { user } = useAuth()
   const [step, setStep] = useState<Step>('calculator')
   const [transactionData, setTransactionData] = useState<any>(null)
   
@@ -47,6 +49,9 @@ export default function SendMoneyPage() {
   const [api1Response, setApi1Response] = useState<any>(null)
   const [verifyCode, setVerifyCode] = useState("1111")
   const [api2Response, setApi2Response] = useState<any>(null)
+  const [holderLookupLoading, setHolderLookupLoading] = useState(false)
+  const [holderVerified, setHolderVerified] = useState(false)
+  const [holderLookupMessage, setHolderLookupMessage] = useState("")
 
   const handleCalculatorConfirm = (details: any) => {
     setTransactionData(details)
@@ -69,12 +74,73 @@ export default function SendMoneyPage() {
     }
   }
 
+  useEffect(() => {
+    if (deliveryMethod !== 'mobile_wallet' || haitiOperator !== 'NatCash') {
+      setHolderLookupLoading(false)
+      setHolderVerified(false)
+      setHolderLookupMessage("")
+      return
+    }
+    const cleanPhone = formatHaitiPhoneNumber(recipient.phone)
+    if (!/^509\d{8}$/.test(cleanPhone)) {
+      setHolderLookupLoading(false)
+      setHolderVerified(false)
+      setHolderLookupMessage("Completa los 8 dígitos para consultar el titular NatCash.")
+      return
+    }
+
+    setHolderVerified(false)
+    setRecipient((current) => current.name ? { ...current, name: "" } : current)
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setHolderLookupLoading(true)
+      setHolderLookupMessage("Consultando titular directamente con NatCash...")
+      try {
+        const idToken = await user?.getIdToken()
+        if (!idToken) throw new Error("Debes iniciar sesión para consultar el titular.")
+        const response = await fetch('/api/bencash/lookup-account', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: cleanPhone }),
+          signal: controller.signal,
+        })
+        const body = await response.json()
+        const holderName = String(body.accountHolder?.name || '').trim()
+        if (!response.ok || !body.success || !body.valid || !holderName) {
+          throw new Error(body.message || 'NatCash no devolvió el nombre del titular.')
+        }
+        setRecipient((current) => ({ ...current, name: holderName }))
+        setHolderVerified(true)
+        setHolderLookupMessage("Titular verificado automáticamente por NatCash.")
+      } catch (error) {
+        if (controller.signal.aborted) return
+        setHolderVerified(false)
+        setHolderLookupMessage(error instanceof Error ? error.message : "No fue posible consultar NatCash.")
+      } finally {
+        if (!controller.signal.aborted) setHolderLookupLoading(false)
+      }
+    }, 650)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [deliveryMethod, haitiOperator, recipient.phone, user])
+
   const handleRecipientSubmit = async () => {
     if (!recipient.name || !recipient.phone) {
       toast({
         variant: "destructive",
         title: "Datos incompletos",
         description: "Por favor, completa el nombre y teléfono del beneficiario.",
+      })
+      return
+    }
+
+    if (deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash' && !holderVerified) {
+      toast({
+        variant: "destructive",
+        title: "Titular NatCash pendiente",
+        description: holderLookupMessage || "Espera a que NatCash confirme el nombre del titular.",
       })
       return
     }
@@ -105,6 +171,8 @@ export default function SendMoneyPage() {
             toAccountNumber: cleanPhone,
             amount: transactionData?.amountReceived || 100,
             content: `Remesa HispaniolaPay (${haitiOperator})`,
+            recipientName: recipient.name,
+            requireReceiverName: haitiOperator === 'NatCash',
           }),
         })
 
@@ -393,20 +461,6 @@ export default function SendMoneyPage() {
                     </div>
                   )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="recipientName">Nombre Completo del Beneficiario</Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                      <Input 
-                        id="recipientName"
-                        placeholder="Ej: Jean Baptiste Pierre"
-                        className="pl-10"
-                        value={recipient.name}
-                        onChange={(e) => setRecipient({...recipient, name: e.target.value})}
-                      />
-                    </div>
-                  </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="recipientPhone">
@@ -445,6 +499,26 @@ export default function SendMoneyPage() {
                           Gourdes Haitianos (HTG)
                         </div>
                       </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="recipientName">Nombre Completo del Beneficiario</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="recipientName"
+                        placeholder={haitiOperator === 'NatCash' ? "Se completará desde NatCash" : "Ej: Jean Baptiste Pierre"}
+                        className={`pl-10 ${holderVerified ? 'border-emerald-400 bg-emerald-50 font-bold' : ''}`}
+                        value={recipient.name}
+                        onChange={(e) => setRecipient({...recipient, name: e.target.value})}
+                        readOnly={deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash'}
+                      />
+                    </div>
+                    {deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash' && (
+                      <p className={`text-[11px] ${holderVerified ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                        {holderLookupLoading ? "Consultando titular NatCash..." : holderLookupMessage}
+                      </p>
                     )}
                   </div>
                 </div>

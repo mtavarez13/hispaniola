@@ -198,6 +198,9 @@ function ClientWalletContent() {
   const [sendPhone, setSendPhone] = useState("50940885084");
   const [sendOperator, setSendOperator] = useState<"MonCash" | "NatCash">("MonCash");
   const [sendRecipientName, setSendRecipientName] = useState("");
+  const [sendHolderLookupLoading, setSendHolderLookupLoading] = useState(false);
+  const [sendHolderVerified, setSendHolderVerified] = useState(false);
+  const [sendHolderLookupMessage, setSendHolderLookupMessage] = useState("");
   const [sendAmountUSD, setSendAmountUSD] = useState<number>(30);
   const [sendProcessing, setSendProcessing] = useState(false);
   const [recentSentTx, setRecentSentTx] = useState<HaitiDepositTransaction | null>(null);
@@ -214,6 +217,53 @@ function ClientWalletContent() {
       }
     }
   }, [sendPhone]);
+
+  useEffect(() => {
+    if (sendOperator !== "NatCash") {
+      setSendHolderLookupLoading(false);
+      setSendHolderVerified(false);
+      setSendHolderLookupMessage("");
+      return;
+    }
+    const cleanPhone = formatHaitiPhoneNumber(sendPhone);
+    if (!/^509\d{8}$/.test(cleanPhone)) {
+      setSendHolderLookupLoading(false);
+      setSendHolderVerified(false);
+      setSendHolderLookupMessage("Completa los 8 dígitos para consultar el titular NatCash.");
+      return;
+    }
+
+    setSendHolderVerified(false);
+    setSendRecipientName("");
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSendHolderLookupLoading(true);
+      setSendHolderLookupMessage("Consultando titular directamente con NatCash...");
+      try {
+        const idToken = await user?.getIdToken();
+        if (!idToken) throw new Error("Debes iniciar sesión para consultar el titular.");
+        const response = await fetch('/api/bencash/lookup-account', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: cleanPhone }),
+          signal: controller.signal,
+        });
+        const body = await response.json();
+        const holderName = String(body.accountHolder?.name || '').trim();
+        if (!response.ok || !body.success || !body.valid || !holderName) throw new Error(body.message || "NatCash no devolvió el nombre del titular.");
+        setSendRecipientName(holderName);
+        setSendHolderVerified(true);
+        setSendHolderLookupMessage("Titular verificado automáticamente por NatCash.");
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setSendHolderVerified(false);
+        setSendHolderLookupMessage(error instanceof Error ? error.message : "No fue posible consultar NatCash.");
+      } finally {
+        if (!controller.signal.aborted) setSendHolderLookupLoading(false);
+      }
+    }, 650);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [sendPhone, sendOperator, user]);
 
   const sendAmountInUSD = primaryCurrency === "DOP" ? sendAmountUSD / rateDOP : primaryCurrency === "HTG" ? sendAmountUSD / rateHTG : sendAmountUSD;
   const sendFeeUSD = Math.round(sendAmountInUSD * (feePercent / 100) * 100) / 100;
@@ -233,6 +283,10 @@ function ClientWalletContent() {
         title: "Nombre requerido",
         description: "Por favor escribe el nombre completo del beneficiario en Haití.",
       });
+      return;
+    }
+    if (sendOperator === "NatCash" && !sendHolderVerified) {
+      toast({ variant: "destructive", title: "Titular NatCash pendiente", description: sendHolderLookupMessage || "Espera a que NatCash confirme el nombre del titular." });
       return;
     }
     if (sendAmountUSD <= 0) {
@@ -783,8 +837,14 @@ function ClientWalletContent() {
                         onChange={(e) => setSendRecipientName(e.target.value)}
                         placeholder="Ej. Jean Baptiste Pierre"
                         className="text-xs"
+                        readOnly={sendOperator === "NatCash"}
                         required
                       />
+                      {sendOperator === "NatCash" && (
+                        <p className={`text-[10px] ${sendHolderVerified ? "text-emerald-700" : "text-muted-foreground"}`}>
+                          {sendHolderLookupLoading ? "Consultando titular NatCash..." : sendHolderLookupMessage}
+                        </p>
+                      )}
                     </div>
                   </div>
 

@@ -1208,14 +1208,14 @@ public final class MainActivity extends Activity {
                     } else {
                         nameInput.setEnabled(true);
                         statusView.setTextColor(MUTED);
-                        statusView.setText("Número nuevo: NatCash mostrará el titular antes de confirmar el envío.");
+                        statusView.setText(response.optString("message", "NatCash no pudo identificar el titular."));
                     }
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
                     nameInput.setEnabled(true);
-                    statusView.setTextColor(MUTED);
-                    statusView.setText("El titular se verificará en el siguiente paso antes de debitar.");
+                    statusView.setTextColor(RED);
+                    statusView.setText("No se pudo consultar: " + friendly(error));
                 });
             }
         });
