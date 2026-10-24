@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useAuth } from "@/lib/auth-context"
+import { useState } from "react"
 import { CalculatorCard } from "@/components/remittance/calculator-card"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -33,7 +32,6 @@ import { formatNumber } from "@/lib/utils"
 type Step = 'calculator' | 'delivery_method' | 'recipient' | 'bencash_confirm' | 'success'
 
 export default function SendMoneyPage() {
-  const { user } = useAuth()
   const [step, setStep] = useState<Step>('calculator')
   const [transactionData, setTransactionData] = useState<any>(null)
   
@@ -49,9 +47,6 @@ export default function SendMoneyPage() {
   const [api1Response, setApi1Response] = useState<any>(null)
   const [verifyCode, setVerifyCode] = useState("1111")
   const [api2Response, setApi2Response] = useState<any>(null)
-  const [holderLookupLoading, setHolderLookupLoading] = useState(false)
-  const [holderVerified, setHolderVerified] = useState(false)
-  const [holderLookupMessage, setHolderLookupMessage] = useState("")
 
   const handleCalculatorConfirm = (details: any) => {
     setTransactionData(details)
@@ -65,82 +60,26 @@ export default function SendMoneyPage() {
 
   // Handle Haiti Phone input change and operator detection
   const handlePhoneChange = (val: string) => {
-    setRecipient(prev => ({ ...prev, phone: val }))
+    const detected = detectHaitiOperator(val)
+    setRecipient(prev => ({
+      ...prev,
+      phone: val,
+      name: deliveryMethod === 'mobile_wallet' && detected.operator === 'NatCash' ? '' : prev.name,
+    }))
     if (transactionData?.destination === 'HT' || deliveryMethod === 'mobile_wallet') {
-      const detected = detectHaitiOperator(val)
       if (detected.operator === 'MonCash' || detected.operator === 'NatCash') {
         setHaitiOperator(detected.operator)
       }
     }
   }
 
-  useEffect(() => {
-    if (deliveryMethod !== 'mobile_wallet' || haitiOperator !== 'NatCash') {
-      setHolderLookupLoading(false)
-      setHolderVerified(false)
-      setHolderLookupMessage("")
-      return
-    }
-    const cleanPhone = formatHaitiPhoneNumber(recipient.phone)
-    if (!/^509\d{8}$/.test(cleanPhone)) {
-      setHolderLookupLoading(false)
-      setHolderVerified(false)
-      setHolderLookupMessage("Completa los 8 dígitos para consultar el titular NatCash.")
-      return
-    }
-
-    setHolderVerified(false)
-    setRecipient((current) => current.name ? { ...current, name: "" } : current)
-    const controller = new AbortController()
-    const timer = window.setTimeout(async () => {
-      setHolderLookupLoading(true)
-      setHolderLookupMessage("Consultando titular directamente con NatCash...")
-      try {
-        const idToken = await user?.getIdToken()
-        if (!idToken) throw new Error("Debes iniciar sesión para consultar el titular.")
-        const response = await fetch('/api/bencash/lookup-account', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: cleanPhone }),
-          signal: controller.signal,
-        })
-        const body = await response.json()
-        const holderName = String(body.accountHolder?.name || '').trim()
-        if (!response.ok || !body.success || !body.valid || !holderName) {
-          throw new Error(body.message || 'NatCash no devolvió el nombre del titular.')
-        }
-        setRecipient((current) => ({ ...current, name: holderName }))
-        setHolderVerified(true)
-        setHolderLookupMessage("Titular verificado automáticamente por NatCash.")
-      } catch (error) {
-        if (controller.signal.aborted) return
-        setHolderVerified(false)
-        setHolderLookupMessage(error instanceof Error ? error.message : "No fue posible consultar NatCash.")
-      } finally {
-        if (!controller.signal.aborted) setHolderLookupLoading(false)
-      }
-    }, 650)
-    return () => {
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [deliveryMethod, haitiOperator, recipient.phone, user])
-
   const handleRecipientSubmit = async () => {
-    if (!recipient.name || !recipient.phone) {
+    const natCashWillResolveName = deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash'
+    if (!recipient.phone || (!natCashWillResolveName && !recipient.name)) {
       toast({
         variant: "destructive",
         title: "Datos incompletos",
         description: "Por favor, completa el nombre y teléfono del beneficiario.",
-      })
-      return
-    }
-
-    if (deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash' && !holderVerified) {
-      toast({
-        variant: "destructive",
-        title: "Titular NatCash pendiente",
-        description: holderLookupMessage || "Espera a que NatCash confirme el nombre del titular.",
       })
       return
     }
@@ -179,6 +118,10 @@ export default function SendMoneyPage() {
         const data = await res.json()
         if (data.resultCode === "200" && data.result) {
           setApi1Response(data.result)
+          const apiHolderName = String(data.result?.receiver?.accountName || '').trim()
+          if (haitiOperator === 'NatCash' && apiHolderName) {
+            setRecipient((current) => ({ ...current, name: apiHolderName }))
+          }
 
           // Si es MonCash, el flujo directo de un paso ya fue completado
           if (haitiOperator === 'MonCash' || data.isMoncash) {
@@ -269,6 +212,7 @@ export default function SendMoneyPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           txId: api1Response.txId,
+          requestId: api1Response.requestId,
           verifyCode: verifyCode || "1111",
           isConfirm: "1",
         }),
@@ -301,6 +245,34 @@ export default function SendMoneyPage() {
     }
   }
 
+  const handleCancelNatCash = async () => {
+    if (api1Response?.txId) {
+      setBencashLoading(true)
+      try {
+        const response = await fetch('/api/bencash/confirm-cashin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            txId: api1Response.txId,
+            requestId: api1Response.requestId,
+            verifyCode: verifyCode || '1111',
+            isConfirm: '0',
+          }),
+        })
+        const body = await response.json()
+        if (!response.ok || String(body.resultCode) !== '200') throw new Error(body.resultMessage || 'NatCash no confirmó la cancelación')
+        toast({ title: 'Operación cancelada', description: 'La solicitud NatCash fue cancelada sin desembolsar fondos.' })
+      } catch (error) {
+        toast({ variant: 'destructive', title: 'No se confirmó la cancelación', description: error instanceof Error ? error.message : 'Contacta a soporte antes de reintentar.' })
+        return
+      } finally {
+        setBencashLoading(false)
+      }
+    }
+    setApi1Response(null)
+    setStep('recipient')
+  }
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(withdrawCode)
     toast({
@@ -331,7 +303,7 @@ export default function SendMoneyPage() {
             variant="ghost" 
             size="icon" 
             onClick={() => {
-              if (step === 'bencash_confirm') setStep('recipient')
+              if (step === 'bencash_confirm') void handleCancelNatCash()
               else if (step === 'recipient' && transactionData?.destination === 'HT') setStep('delivery_method')
               else setStep('calculator')
             }}
@@ -509,16 +481,14 @@ export default function SendMoneyPage() {
                       <Input
                         id="recipientName"
                         placeholder={haitiOperator === 'NatCash' ? "Se completará desde NatCash" : "Ej: Jean Baptiste Pierre"}
-                        className={`pl-10 ${holderVerified ? 'border-emerald-400 bg-emerald-50 font-bold' : ''}`}
+                        className={`pl-10 ${haitiOperator === 'NatCash' && recipient.name ? 'border-emerald-400 bg-emerald-50 font-bold' : ''}`}
                         value={recipient.name}
                         onChange={(e) => setRecipient({...recipient, name: e.target.value})}
                         readOnly={deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash'}
                       />
                     </div>
                     {deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash' && (
-                      <p className={`text-[11px] ${holderVerified ? 'text-emerald-700' : 'text-muted-foreground'}`}>
-                        {holderLookupLoading ? "Consultando titular NatCash..." : holderLookupMessage}
-                      </p>
+                      <p className="text-[11px] text-muted-foreground">El nombre real aparecerá en la pantalla de confirmación después de pulsar “Revisar envío”.</p>
                     )}
                   </div>
                 </div>
@@ -556,7 +526,7 @@ export default function SendMoneyPage() {
                     </>
                   ) : (
                     <>
-                      {deliveryMethod === 'mobile_wallet' ? 'Validar Billetera y Continuar' : 'Confirmar y Enviar'} <ArrowRight className="w-4 h-4" />
+                      {deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash' ? 'Revisar envío' : deliveryMethod === 'mobile_wallet' ? 'Validar Billetera y Continuar' : 'Confirmar y Enviar'} <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </Button>
@@ -570,7 +540,7 @@ export default function SendMoneyPage() {
               <CardHeader className="bg-primary text-white p-6">
                 <CardTitle className="text-xl font-bold flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-accent" />
-                  Confirmar Depósito Directo BenCash
+                  Confirmar remesa NatCash
                 </CardTitle>
                 <CardDescription className="text-slate-300 text-xs">
                   Valide la cuenta del destinatario antes del desembolso final.
@@ -619,11 +589,11 @@ export default function SendMoneyPage() {
               <CardFooter className="bg-secondary/20 p-4 border-t border-border flex gap-3">
                 <Button 
                   variant="outline" 
-                  onClick={() => setStep('recipient')} 
+                  onClick={() => void handleCancelNatCash()}
                   disabled={bencashLoading}
                   className="w-1/3"
                 >
-                  Atrás
+                  Cancelar
                 </Button>
                 <Button
                   onClick={handleConfirmBenCash}

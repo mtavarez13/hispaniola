@@ -1099,8 +1099,8 @@ public final class MainActivity extends Activity {
         EditText phone = input("Número de Haití (8 dígitos)", InputType.TYPE_CLASS_PHONE);
         EditText name = input("Nombre del destinatario", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         EditText amount = input("Monto total en " + walletCurrency(), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        TextView holderStatus = text("Al colocar el número, buscaremos un titular NatCash verificado.", 11, MUTED, Typeface.NORMAL);
-        final String[] lastHolderLookup = {""};
+        name.setEnabled(false);
+        TextView holderStatus = text("Pulsa Revisar y enviar para mostrar el número, titular NatCash y monto antes de confirmar.", 11, MUTED, Typeface.NORMAL);
         content.addView(phone, params(-1, dp(57), 9));
         content.addView(name, params(-1, dp(57), 11));
         content.addView(holderStatus, params(-1, -2, 5));
@@ -1110,21 +1110,18 @@ public final class MainActivity extends Activity {
             selected[0] = "NatCash";
             styleOperator(natcash, true);
             styleOperator(moncash, false);
-            lookupNatCashHolder(phone, name, holderStatus, lastHolderLookup);
+            name.setText("");
+            name.setEnabled(false);
+            holderStatus.setTextColor(MUTED);
+            holderStatus.setText("Pulsa Revisar y enviar para mostrar el número, titular NatCash y monto antes de confirmar.");
         });
         moncash.setOnClickListener(v -> {
             selected[0] = "MonCash";
             styleOperator(natcash, false);
             styleOperator(moncash, true);
-            lastHolderLookup[0] = "";
             name.setEnabled(true);
             holderStatus.setTextColor(MUTED);
             holderStatus.setText("MonCash no ofrece consulta previa del titular por número.");
-        });
-        phone.addTextChangedListener(new SimpleWatcher() {
-            @Override public void afterTextChanged(Editable editable) {
-                if ("NatCash".equals(selected[0])) lookupNatCashHolder(phone, name, holderStatus, lastHolderLookup);
-            }
         });
 
         LinearLayout quote = card();
@@ -1164,60 +1161,15 @@ public final class MainActivity extends Activity {
             double htg = round("DOP".equals(sourceCurrency) ? (value - fee) * dopToHtg : "HTG".equals(sourceCurrency) ? value - fee : (valueUsd - (valueUsd * feePct / 100d)) * rate);
             String finalPhone = recipientPhone;
             boolean requiresNatCashVerification = "NatCash".equals(selected[0]);
+            if (requiresNatCashVerification) {
+                executeSend(send, selected[0], "", finalPhone, value);
+                return;
+            }
             new AlertDialog.Builder(this).setTitle(requiresNatCashVerification ? "Consultar titular NatCash" : "Confirmar remesa MonCash")
                     .setMessage(selected[0] + " · +509 " + finalPhone + "\n" + recipient + "\n\nDebitar: " + walletMoney(value) + "\nRecibe: " + String.format(Locale.US, "%,.2f HTG", htg) + "\nTarifa incluida: " + walletMoney(fee)
                             + (requiresNatCashVerification ? "\n\nNatCash mostrará el titular real antes del débito final." : "\n\nMonCash no ofrece consulta independiente del titular antes del envío."))
                     .setNegativeButton("Cancelar", null)
                     .setPositiveButton(requiresNatCashVerification ? "Consultar titular" : "Enviar ahora", (dialog, which) -> executeSend(send, selected[0], recipient, finalPhone, value)).show();
-        });
-    }
-
-    private void lookupNatCashHolder(EditText phoneInput, EditText nameInput, TextView statusView, String[] lastLookup) {
-        String digits = phoneInput.getText().toString().replaceAll("\\D", "");
-        if (digits.startsWith("509")) digits = digits.substring(3);
-        if (digits.length() != 8) {
-            lastLookup[0] = "";
-            if (!nameInput.isEnabled()) nameInput.setText("");
-            nameInput.setEnabled(true);
-            statusView.setTextColor(MUTED);
-            statusView.setText("Completa los 8 dígitos para buscar el titular NatCash.");
-            return;
-        }
-
-        String fullPhone = "509" + digits;
-        if (fullPhone.equals(lastLookup[0])) return;
-        lastLookup[0] = fullPhone;
-        if (!nameInput.isEnabled()) nameInput.setText("");
-        nameInput.setEnabled(true);
-        statusView.setTextColor(BLUE);
-        statusView.setText("Consultando titular NatCash…");
-        executor.execute(() -> {
-            try {
-                JSONObject response = api.lookupRemittanceAccount(fullPhone);
-                JSONObject holder = response.optJSONObject("accountHolder");
-                String holderName = holder == null ? "" : holder.optString("name", "").trim();
-                boolean verified = holder != null && holder.optBoolean("verified", false) && !holderName.isEmpty();
-                runOnUiThread(() -> {
-                    String current = phoneInput.getText().toString().replaceAll("\\D", "");
-                    if (!current.endsWith(fullPhone.substring(3))) return;
-                    if (verified) {
-                        nameInput.setText(holderName);
-                        nameInput.setEnabled(false);
-                        statusView.setTextColor(GREEN);
-                        statusView.setText("✓ Titular NatCash verificado automáticamente por API");
-                    } else {
-                        nameInput.setEnabled(true);
-                        statusView.setTextColor(MUTED);
-                        statusView.setText(response.optString("message", "NatCash no pudo identificar el titular."));
-                    }
-                });
-            } catch (Exception error) {
-                runOnUiThread(() -> {
-                    nameInput.setEnabled(true);
-                    statusView.setTextColor(RED);
-                    statusView.setText("No se pudo consultar: " + friendly(error));
-                });
-            }
         });
     }
 
@@ -1348,13 +1300,26 @@ public final class MainActivity extends Activity {
                     button.setText("Revisar y enviar");
                     new AlertDialog.Builder(this)
                             .setTitle("Titular confirmado por NatCash")
-                            .setMessage("Titular: " + holder + "\nCuenta: +509 " + phone + "\nRecibirá: " + String.format(Locale.US, "%,.2f HTG", amountHtg) + "\n\nVerifica el nombre antes de confirmar. El saldo todavía no ha sido debitado.")
-                            .setNegativeButton("Cancelar", null)
+                            .setMessage("Número: +509 " + phone + "\nTitular: " + holder + "\nMonto a enviar: " + walletMoney(amount) + "\nMonto a recibir: " + String.format(Locale.US, "%,.2f HTG", amountHtg) + "\n\nConfirma que el número, el titular y el monto son correctos. El saldo todavía no ha sido debitado.")
+                            .setCancelable(false)
+                            .setNegativeButton("Cancelar", (dialog, which) -> cancelRemittancePreview(previewId))
                             .setPositiveButton("Confirmar y enviar", (dialog, which) -> performRemittance(button, operator, holder, phone, amount, idempotencyKey, previewId))
                             .show();
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> { button.setEnabled(true); button.setText("Revisar y enviar"); errorDialog("No se pudo verificar el titular", friendly(error)); });
+            }
+        });
+    }
+
+    private void cancelRemittancePreview(String previewId) {
+        if (previewId == null || previewId.isEmpty()) return;
+        executor.execute(() -> {
+            try {
+                api.cancelRemittancePreview(previewId);
+                runOnUiThread(() -> toast("Solicitud NatCash cancelada sin débito"));
+            } catch (Exception error) {
+                runOnUiThread(() -> errorDialog("No se confirmó la cancelación", friendly(error)));
             }
         });
     }

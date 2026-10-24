@@ -76,10 +76,10 @@ final class ApiClient {
         return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances/preview", "POST", payload, 65000);
     }
 
-    JSONObject lookupRemittanceAccount(String phone) throws Exception {
+    JSONObject cancelRemittancePreview(String previewId) throws Exception {
         JSONObject payload = new JSONObject();
-        payload.put("phone", phone);
-        return authorizedRequest(BuildConfig.APP_URL + "/api/bencash/lookup-account", "POST", payload, 45000);
+        payload.put("previewId", previewId);
+        return authorizedRequest(BuildConfig.APP_URL + "/api/mobile/remittances/preview", "DELETE", payload, 45000);
     }
 
     JSONObject transferBalance(JSONObject payload) throws Exception {

@@ -304,7 +304,8 @@ export default function HaitiRemittancesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("ALL")
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Auto detect operator and lookup account holder when phone changes
+  // Detecta el operador. NatCash devuelve el titular en la solicitud real,
+  // después de pulsar Revisar, para evitar crear consultas transaccionales duplicadas.
   useEffect(() => {
     if (!phone) {
       setDetectedAccount(null)
@@ -323,56 +324,15 @@ export default function HaitiRemittancesPage() {
       setDetectedOperatorInfo(null)
     }
 
-    const clean = phone.replace(/\D/g, "")
-    const local = clean.startsWith("509") ? clean.slice(3) : clean
-    if (local.length < 8) {
-      setDetectedAccount(null)
+    setAccountLookupLoading(false)
+    setDetectedAccount(null)
+    if (detected.operator === "NatCash" || (isManualOperator && operator === "NatCash")) {
+      setRecipientName("")
+      setAccountLookupMessage("Pulsa Revisar envío para mostrar el número, titular NatCash y monto antes de confirmar.")
+    } else {
       setAccountLookupMessage("")
-      return
     }
-
-    // Debounce lookup to avoid excessive requests while typing
-    const timer = setTimeout(async () => {
-      setAccountLookupLoading(true)
-      setAccountLookupMessage("Consultando el titular directamente con NatCash...")
-      try {
-        const idToken = await user?.getIdToken()
-        if (!idToken) return
-        const res = await fetch('/api/bencash/lookup-account', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ phone: clean }),
-        })
-        const data = await res.json()
-        if (data.success && data.accountHolder && data.valid) {
-          setDetectedAccount(data.accountHolder)
-          setAccountLookupMessage(data.message || "Titular verificado por NatCash.")
-          if (data.operator === "NatCash" && data.accountHolder.verified) {
-            setRecipientName(data.accountHolder.name)
-          }
-          if (data.operator === "MonCash" || data.operator === "NatCash") {
-            if (!isManualOperator) {
-              setOperator(data.operator)
-            }
-          }
-        } else {
-          setDetectedAccount(null)
-          setAccountLookupMessage(data.message || "NatCash no pudo identificar el titular de este número.")
-        }
-      } catch (err) {
-        console.warn("Error buscando titular de cuenta:", err)
-        setDetectedAccount(null)
-        setAccountLookupMessage("No fue posible consultar NatCash. Intenta nuevamente.")
-      } finally {
-        setAccountLookupLoading(false)
-      }
-    }, 650)
-
-    return () => clearTimeout(timer)
-  }, [phone, isManualOperator, user])
+  }, [phone, isManualOperator, operator])
 
   // Check API server status
   useEffect(() => {
@@ -805,6 +765,40 @@ export default function HaitiRemittancesPage() {
         title: "Error de Conexión",
         description: err.message || "Fallo al confirmar el depósito con BenCash.",
       })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancelCashIn = async () => {
+    if (!api1Response?.txId) {
+      setCashInStep("form")
+      return
+    }
+    setLoading(true)
+    try {
+      const activeReqId = currentRequestId || api1Response.requestId || undefined
+      const response = await fetch('/api/bencash/confirm-cashin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          txId: api1Response.txId,
+          requestId: activeReqId,
+          operator,
+          verifyCode: verifyCode || '1111',
+          isConfirm: '0',
+          baseUrl: baseUrlInput || settings?.bencashBaseUrl || undefined,
+          privateKey: privateKeyInput || settings?.bencashPrivateKey || undefined,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok || String(result.resultCode) !== '200') throw new Error(result.resultMessage || 'NatCash no confirmó la cancelación')
+      setApi1Response(null)
+      setCurrentRequestId(null)
+      setCashInStep('form')
+      toast({ title: 'Operación cancelada', description: 'La solicitud NatCash fue cancelada sin desembolsar fondos.' })
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'No se confirmó la cancelación', description: error instanceof Error ? error.message : 'Contacta a soporte antes de reintentar.' })
     } finally {
       setLoading(false)
     }
@@ -1599,8 +1593,8 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                           id="recipientName"
                           value={recipientName}
                           onChange={(e) => setRecipientName(e.target.value)}
-                          placeholder={operator === "NatCash" ? "Se completará automáticamente si ya fue verificado" : "Escribe el nombre y apellido"}
-                          readOnly={Boolean(operator === "NatCash" && detectedAccount?.verified)}
+                          placeholder={operator === "NatCash" ? "NatCash mostrará el titular al revisar" : "Escribe el nombre y apellido"}
+                          readOnly={operator === "NatCash"}
                           className={`h-11 text-sm font-bold ${
                             detectedAccount?.verified
                               ? "border-emerald-400 bg-emerald-50 text-emerald-950"
@@ -1614,7 +1608,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                           {detectedAccount?.verified
                             ? "Nombre recuperado y verificado automáticamente por el API NatCash."
                             : operator === "NatCash"
-                            ? accountLookupMessage || "Completa el número para consultar el titular en NatCash."
+                            ? accountLookupMessage || "Pulsa Revisar envío para consultar el titular y confirmar el monto."
                             : "MonCash no ofrece consulta previa de titular por número."}
                         </p>
                       </div>
@@ -1902,7 +1896,11 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                     {/* Amount Breakdown */}
                     <div className="p-4 rounded-xl bg-secondary/40 border border-border space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Monto a Acreditar:</span>
+                        <span className="text-muted-foreground">Monto a enviar:</span>
+                        <span className="font-bold text-primary">US${amountUSD.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Monto a recibir:</span>
                         <span className="font-bold text-primary">{api1Response.amount} HTG</span>
                       </div>
                       <div className="flex justify-between">
@@ -1956,7 +1954,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                   <CardFooter className="bg-secondary/20 p-4 border-t border-border flex gap-3">
                     <Button
                       variant="outline"
-                      onClick={() => setCashInStep("form")}
+                      onClick={() => void handleCancelCashIn()}
                       disabled={loading}
                       className="w-1/3"
                     >
