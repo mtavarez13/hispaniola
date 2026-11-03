@@ -104,6 +104,9 @@ export interface HaitiDepositTransaction {
   recipientName: string;
   recipientAccountId?: string;
   amountUSD: number;
+  amountSent?: number;
+  sourceCurrency?: 'USD' | 'DOP' | 'HTG';
+  feeAmount?: number;
   amountHTG: number;
   feeHTG: number;
   totalAmountHTG: number;

@@ -45,7 +45,9 @@ import {
   UserCheck,
   Loader2,
   Wallet,
-  PiggyBank
+  PiggyBank,
+  Printer,
+  Download
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useSystemSettings } from "@/lib/settings-context"
@@ -55,6 +57,7 @@ import Link from "next/link"
 import { detectHaitiOperator, formatHaitiPhoneNumber } from "@/lib/bencash/utils"
 import { HaitiDepositTransaction } from "@/lib/types"
 import { formatNumber } from "@/lib/utils"
+import { downloadRemittanceReceipt58mm, printRemittanceReceipt58mm } from "@/lib/remittance/thermal-receipt-58mm"
 
 const getReceiverNameFromApi = (payload: any): string => {
   const candidates = [
@@ -134,10 +137,37 @@ export default function HaitiRemittancesPage() {
           phone: account.phone || current.phone,
           idNumber: account.idNumber || current.idNumber,
         }))
+        const remoteTransactions: HaitiDepositTransaction[] = (data.remittances || []).map((item: any) => ({
+          id: String(item.id),
+          requestId: item.requestId || "",
+          txId: String(item.txId || item.id),
+          transactionId: String(item.txId || item.id),
+          operator: item.operator === "NatCash" ? "NatCash" : "MonCash",
+          toAccountNumber: String(item.recipientPhone || ""),
+          recipientName: String(item.recipientName || "Destinatario"),
+          amountUSD: Number(item.amountUSD || 0),
+          amountSent: Number(item.amount ?? item.amountUSD ?? 0),
+          sourceCurrency: item.currency === "DOP" || item.currency === "HTG" ? item.currency : "USD",
+          amountHTG: Number(item.amountHTG || 0),
+          feeHTG: 0,
+          totalAmountHTG: Number(item.amountHTG || 0),
+          content: String(item.message || "Remesa HispaniolaPay"),
+          status: item.status === "completed" || item.status === "confirmed" ? "confirmed" : item.status === "failed" ? "failed" : item.status === "cancelled" ? "cancelled" : "pending",
+          senderName: String(account.name || userProfile?.name || "Cliente HispaniolaPay"),
+          timestamp: item.createdAt ? new Date(item.createdAt).getTime() : Date.now(),
+          createdAt: item.createdAt || new Date().toISOString(),
+          feePercent: Number(item.feePercent || 0),
+          feeUSD: Number(item.feeUSD || 0),
+        }))
+        setTransactions((current) => {
+          const remoteIds = new Set(remoteTransactions.flatMap((item) => [item.id, item.txId, item.transactionId].filter(Boolean)))
+          const localOnly = current.filter((item) => !remoteIds.has(item.id) && !remoteIds.has(item.txId) && !remoteIds.has(item.transactionId))
+          return [...remoteTransactions, ...localOnly].sort((a, b) => b.timestamp - a.timestamp)
+        })
       })
       .catch((error) => console.warn("Remittance account sync failed:", error))
     return () => { cancelled = true }
-  }, [user])
+  }, [user, userProfile?.name])
 
   // Restrict: Non-admin users cannot access API config tab
   useEffect(() => {
@@ -194,98 +224,7 @@ export default function HaitiRemittancesPage() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   // Transactions History State
-  const [transactions, setTransactions] = useState<HaitiDepositTransaction[]>([
-    {
-      id: "HT-TX-901",
-      requestId: 928371,
-      txId: "d4f3dada767f48608d2cf3ddc0350e85",
-      transactionId: "25092425956731",
-      operator: "MonCash",
-      toAccountNumber: "50940885084",
-      recipientName: "Jean Baptiste Pierre",
-      recipientAccountId: "32727412",
-      amountUSD: 50,
-      amountHTG: 6278.50,
-      feeHTG: 0,
-      totalAmountHTG: 6278.50,
-      content: "Transfert Familial",
-      verifyCode: "1111",
-      status: "confirmed",
-      senderName: "Carlos Rodríguez",
-      timestamp: Date.now() - 3600000 * 2,
-      createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-      feePercent: 8.0,
-      feeUSD: 4.00,
-      bencashFeePercent: 3.0,
-      bencashFeeUSD: 1.50,
-      subAgentFeePercent: 2.0,
-      subAgentFeeUSD: 1.00,
-      subAgentId: "SA-101",
-      subAgentName: "Agencia Fronteriza Dajabón",
-      hispaniolaProfitPercent: 3.0,
-      hispaniolaProfitUSD: 1.50,
-    },
-    {
-      id: "HT-TX-902",
-      requestId: 819203,
-      txId: "48d3fb5ab37c4cb7a86dbd03cfc05dcd",
-      transactionId: "25092425988102",
-      operator: "NatCash",
-      toAccountNumber: "50932145678",
-      recipientName: "Marie Claire Joseph",
-      recipientAccountId: "44910283",
-      amountUSD: 100,
-      amountHTG: 12559.00,
-      feeHTG: 0,
-      totalAmountHTG: 12559.00,
-      content: "Aide Mensuelle",
-      verifyCode: "1111",
-      status: "confirmed",
-      senderName: "Manuel Gómez",
-      timestamp: Date.now() - 3600000 * 14,
-      createdAt: new Date(Date.now() - 3600000 * 14).toISOString(),
-      feePercent: 8.0,
-      feeUSD: 8.00,
-      bencashFeePercent: 3.0,
-      bencashFeeUSD: 3.00,
-      subAgentFeePercent: 2.0,
-      subAgentFeeUSD: 2.00,
-      subAgentId: "SA-102",
-      subAgentName: "Remesas Jimaní Express",
-      hispaniolaProfitPercent: 3.0,
-      hispaniolaProfitUSD: 3.00,
-    },
-    {
-      id: "HT-TX-903",
-      requestId: 710294,
-      txId: "e9a184bc71029481726a849201928374",
-      transactionId: "25092425911409",
-      operator: "MonCash",
-      toAccountNumber: "50937890123",
-      recipientName: "Dieudonné Alexandre",
-      recipientAccountId: "19284729",
-      amountUSD: 75,
-      amountHTG: 9419.25,
-      feeHTG: 0,
-      totalAmountHTG: 9419.25,
-      content: "Frais scolaires",
-      verifyCode: "1111",
-      status: "confirmed",
-      senderName: "Carlos Rodríguez",
-      timestamp: Date.now() - 3600000 * 28,
-      createdAt: new Date(Date.now() - 3600000 * 28).toISOString(),
-      feePercent: 8.0,
-      feeUSD: 6.00,
-      bencashFeePercent: 3.0,
-      bencashFeeUSD: 2.25,
-      subAgentFeePercent: 2.0,
-      subAgentFeeUSD: 1.50,
-      subAgentId: "SA-101",
-      subAgentName: "Agencia Fronteriza Dajabón",
-      hispaniolaProfitPercent: 3.0,
-      hispaniolaProfitUSD: 2.25,
-    }
-  ])
+  const [transactions, setTransactions] = useState<HaitiDepositTransaction[]>([])
 
   // Persistence helpers
   const saveTransactionsWithStorage = (newTxs: HaitiDepositTransaction[]) => {
@@ -504,6 +443,9 @@ export default function HaitiRemittancesPage() {
           recipientName: effectiveRecipientName,
           recipientAccountId: data.result?.receiver?.accountId,
           amountUSD: amountUSD,
+          amountSent: sendAmount,
+          sourceCurrency: primaryCurrency,
+          feeAmount: feeAmountSource,
           amountHTG: calculatedHTG,
           feeHTG: 0,
           totalAmountHTG: calculatedHTG,
@@ -593,6 +535,9 @@ export default function HaitiRemittancesPage() {
           recipientName: effectiveRecipientName,
           recipientAccountId: data.result.receiver?.accountId,
           amountUSD: amountUSD,
+          amountSent: sendAmount,
+          sourceCurrency: primaryCurrency,
+          feeAmount: feeAmountSource,
           amountHTG: calculatedHTG,
           feeHTG: 0,
           totalAmountHTG: calculatedHTG,
@@ -718,6 +663,9 @@ export default function HaitiRemittancesPage() {
             recipientName: effectiveRecipientName,
             recipientAccountId: api1Response.receiver?.accountId,
             amountUSD: amountUSD,
+            amountSent: sendAmount,
+            sourceCurrency: primaryCurrency,
+            feeAmount: feeAmountSource,
             amountHTG: calculatedHTG,
             feeHTG: 0,
             totalAmountHTG: calculatedHTG,
@@ -2492,7 +2440,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                       <TableHead>Beneficiario</TableHead>
                       <TableHead>Teléfono</TableHead>
                       <TableHead>Monto HTG</TableHead>
-                      <TableHead>Monto USD</TableHead>
+                      <TableHead>Monto enviado</TableHead>
                       <TableHead>txId / RequestId</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
@@ -2521,7 +2469,9 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         <TableCell className="font-bold text-accent" suppressHydrationWarning>
                           {formatNumber(tx.amountHTG)} <span className="text-[10px]">HTG</span>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">${tx.amountUSD.toFixed(2)} USD</TableCell>
+                        <TableCell className="text-muted-foreground font-semibold">
+                          {formatNumber(tx.amountSent ?? tx.amountUSD)} {tx.sourceCurrency || "USD"}
+                        </TableCell>
                         <TableCell className="font-mono text-[10px] text-muted-foreground max-w-[140px]">
                           <div className="truncate" title={tx.txId}>{tx.txId}</div>
                           {tx.requestId && (
@@ -2614,11 +2564,46 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                               </Button>
                             </div>
                           ) : (
-                            <span className="text-[10px] text-muted-foreground font-medium">Completado</span>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => printRemittanceReceipt58mm(tx, {
+                                  name: userProfile?.name || tx.senderName,
+                                  clientCode: userProfile?.clientCode,
+                                  phone: userProfile?.phone,
+                                  businessName: tx.subAgentName,
+                                })}
+                                className="h-7 px-2 text-[10px] font-bold gap-1"
+                                title="Abrir recibo térmico de 58 mm para imprimir"
+                              >
+                                <Printer className="h-3 w-3" /> Imprimir
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => downloadRemittanceReceipt58mm(tx, {
+                                  name: userProfile?.name || tx.senderName,
+                                  clientCode: userProfile?.clientCode,
+                                  phone: userProfile?.phone,
+                                  businessName: tx.subAgentName,
+                                })}
+                                className="h-7 px-2 text-[10px] font-bold gap-1 bg-slate-900 hover:bg-slate-800 text-white"
+                                title="Descargar recibo PDF térmico de 58 mm"
+                              >
+                                <Download className="h-3 w-3" /> PDF 58 mm
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
                     ))}
+                    {filteredTransactions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={9} className="h-32 text-center text-sm text-muted-foreground">
+                          No hay remesas NatCash o MonCash para los filtros seleccionados.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
