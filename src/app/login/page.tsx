@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, Suspense, type CSSProperties } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,79 @@ import { toast } from "@/hooks/use-toast"
 import { ArrowLeft, Mail, Lock, User, Shield, Loader2, Phone, CreditCard, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { AppLogo } from "@/components/brand/app-logo"
+
+type RainParticle = {
+  kind: "binance" | "money" | "moncash" | "natcash"
+  left: number
+  delay: number
+  duration: number
+  size: number
+  drift: number
+  label?: string
+}
+
+const rainParticles: RainParticle[] = [
+  { kind: "binance", left: 4, delay: -4, duration: 15, size: 44, drift: 28 },
+  { kind: "money", left: 11, delay: -10, duration: 18, size: 38, drift: -22, label: "$" },
+  { kind: "moncash", left: 18, delay: -1, duration: 17, size: 54, drift: 18 },
+  { kind: "natcash", left: 26, delay: -12, duration: 20, size: 54, drift: -28 },
+  { kind: "money", left: 34, delay: -6, duration: 14, size: 42, drift: 24, label: "RD$" },
+  { kind: "binance", left: 42, delay: -14, duration: 21, size: 36, drift: -18 },
+  { kind: "moncash", left: 49, delay: -8, duration: 16, size: 50, drift: 30 },
+  { kind: "money", left: 57, delay: -2, duration: 19, size: 38, drift: -26, label: "$" },
+  { kind: "natcash", left: 65, delay: -16, duration: 22, size: 56, drift: 20 },
+  { kind: "binance", left: 73, delay: -5, duration: 17, size: 42, drift: -30 },
+  { kind: "money", left: 81, delay: -11, duration: 15, size: 36, drift: 18, label: "HTG" },
+  { kind: "moncash", left: 90, delay: -3, duration: 20, size: 52, drift: -24 },
+  { kind: "natcash", left: 96, delay: -13, duration: 18, size: 48, drift: 22 },
+  { kind: "money", left: 7, delay: -17, duration: 23, size: 34, drift: -16, label: "$" },
+  { kind: "binance", left: 30, delay: -19, duration: 24, size: 34, drift: 26 },
+  { kind: "natcash", left: 53, delay: -21, duration: 25, size: 46, drift: -20 },
+  { kind: "money", left: 69, delay: -9, duration: 16, size: 40, drift: 30, label: "RD$" },
+  { kind: "moncash", left: 86, delay: -20, duration: 24, size: 48, drift: -18 },
+]
+
+function FallingBrandSymbol({ particle }: { particle: RainParticle }) {
+  if (particle.kind === "binance") {
+    return (
+      <span className="login-rain-binance" aria-label="Binance">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="m16 3 5 5-5 5-5-5 5-5Zm-8 8 5 5-5 5-5-5 5-5Zm16 0 5 5-5 5-5-5 5-5Zm-8 8 5 5-5 5-5-5 5-5Zm0-9 6 6-6 6-6-6 6-6Z" fill="currentColor" />
+        </svg>
+      </span>
+    )
+  }
+  if (particle.kind === "moncash") {
+    return <span className="login-rain-brand login-rain-moncash" aria-label="MonCash"><strong>M</strong><small>MONCASH</small></span>
+  }
+  if (particle.kind === "natcash") {
+    return <span className="login-rain-brand login-rain-natcash" aria-label="NatCash"><strong>N</strong><small>NATCASH</small></span>
+  }
+  return <span className="login-rain-money" aria-label="Símbolo de dinero">{particle.label}</span>
+}
+
+function LoginMoneyRain() {
+  return (
+    <div className="login-money-rain" aria-hidden="true">
+      {rainParticles.map((particle, index) => (
+        <span
+          key={`${particle.kind}-${index}`}
+          className="login-rain-particle"
+          style={{
+            left: `${particle.left}%`,
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+            animationDelay: `${particle.delay}s`,
+            animationDuration: `${particle.duration}s`,
+            "--rain-drift": `${particle.drift}px`,
+          } as CSSProperties}
+        >
+          <FallingBrandSymbol particle={particle} />
+        </span>
+      ))}
+    </div>
+  )
+}
 
 function LoginFormInner() {
   const { loginWithGoogle, loginWithEmail, registerWithEmail, user } = useAuth()
@@ -154,18 +227,21 @@ function LoginFormInner() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F2F5FB] flex flex-col justify-center items-center p-4 py-8">
-      <div className="w-full max-w-lg space-y-6">
+    <div className="relative min-h-screen overflow-hidden bg-[#04152f] flex flex-col justify-center items-center p-4 py-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(14,165,233,0.3),transparent_34%),radial-gradient(circle_at_85%_80%,rgba(34,197,94,0.22),transparent_36%),linear-gradient(135deg,#031126_0%,#082b59_52%,#04152f_100%)]" />
+      <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:44px_44px]" />
+      <LoginMoneyRain />
+      <div className="relative z-10 w-full max-w-lg space-y-6">
         <div className="flex items-center justify-between">
           <Link href="/">
-            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-primary">
+            <Button variant="ghost" size="sm" className="gap-2 text-white/80 hover:bg-white/10 hover:text-white">
               <ArrowLeft className="w-4 h-4" /> Volver al Inicio
             </Button>
           </Link>
-          <AppLogo size="sm" />
+          <div className="rounded-xl border border-white/15 bg-white/90 px-3 py-2 shadow-lg backdrop-blur-xl"><AppLogo size="sm" /></div>
         </div>
 
-        <Card className="border-none shadow-2xl bg-white overflow-hidden">
+        <Card className="overflow-hidden border border-white/30 bg-white/95 shadow-[0_28px_90px_rgba(0,0,0,.42)] backdrop-blur-2xl">
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-2xl font-black text-primary">Acceso a Hispaniola Pay</CardTitle>
             <CardDescription className="text-xs sm:text-sm">

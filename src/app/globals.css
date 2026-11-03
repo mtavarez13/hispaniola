@@ -72,6 +72,101 @@
   }
 }
 
+@keyframes login-symbol-rain {
+  0% {
+    transform: translate3d(0, -18vh, 0) rotate(-12deg) scale(.82);
+    opacity: 0;
+  }
+  10% { opacity: .62; }
+  88% { opacity: .48; }
+  100% {
+    transform: translate3d(var(--rain-drift, 0), 118vh, 0) rotate(22deg) scale(1.05);
+    opacity: 0;
+  }
+}
+
+.login-money-rain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 82%, transparent 100%);
+}
+
+.login-rain-particle {
+  --rain-drift: 0px;
+  position: absolute;
+  top: -18vh;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .3));
+  animation: login-symbol-rain 18s linear infinite;
+  will-change: transform, opacity;
+}
+
+.login-rain-binance,
+.login-rain-money,
+.login-rain-brand {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.login-rain-binance {
+  color: #f3ba2f;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, .72);
+  border: 1px solid rgba(243, 186, 47, .5);
+  padding: 8px;
+}
+
+.login-rain-binance svg { width: 100%; height: 100%; }
+
+.login-rain-money {
+  color: #dcfce7;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 222, 128, .5);
+  background: rgba(22, 163, 74, .5);
+  font-size: clamp(.72rem, 1.2vw, 1rem);
+  font-weight: 900;
+  letter-spacing: -.04em;
+}
+
+.login-rain-brand {
+  border-radius: 18px;
+  grid-template-rows: 1fr auto;
+  padding: 5px;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, .36);
+}
+
+.login-rain-brand strong {
+  align-self: end;
+  font-size: 1.18rem;
+  font-style: italic;
+  line-height: 1;
+}
+
+.login-rain-brand small {
+  align-self: start;
+  font-size: .34rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
+.login-rain-moncash { background: linear-gradient(145deg, #a1002d, #e21d48); }
+.login-rain-natcash { background: linear-gradient(145deg, #006bb6, #00a67d); }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-rain-particle {
+    animation: none;
+    opacity: .18;
+    transform: translateY(calc(12vh + (var(--rain-drift, 0px) * 4)));
+  }
+}
+
 @layer base {
   * {
     border-color: hsl(var(--border));
