@@ -8,7 +8,19 @@ const money = (value: number) => Number(value || 0).toLocaleString("en-US", {
   maximumFractionDigits: 2,
 })
 
-function createReceipt(transaction: HaitiDepositTransaction, identity?: ReceiptIdentity) {
+async function loadBrandLogo() {
+  const response = await fetch("/branding/hispaniolapay-mark.png", { cache: "force-cache" })
+  if (!response.ok) throw new Error("No se pudo cargar el logo de HispaniolaPay")
+  const blob = await response.blob()
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function createReceipt(transaction: HaitiDepositTransaction, identity?: ReceiptIdentity) {
   const doc = new jsPDF({ unit: "mm", format: [58, 150], orientation: "portrait" })
   const center = 29
   const left = 4
@@ -37,6 +49,14 @@ function createReceipt(transaction: HaitiDepositTransaction, identity?: ReceiptI
     y += 4
   }
 
+  try {
+    const logo = await loadBrandLogo()
+    doc.addImage(logo, "PNG", 21, 4, 16, 16, "hispaniolapay-logo", "FAST")
+    y = 24
+  } catch (error) {
+    console.warn("No se pudo agregar el logo al recibo:", error)
+  }
+
   centered("HISPANIOLAPAY", 12, true)
   centered("RECIBO DE REMESA", 8, true)
   centered("www.hispaniolapay.com", 7)
@@ -45,7 +65,6 @@ function createReceipt(transaction: HaitiDepositTransaction, identity?: ReceiptI
   row("ESTADO", transaction.status === "confirmed" ? "ACREDITADO" : transaction.status.toUpperCase(), true)
   row("FECHA", new Date(transaction.createdAt || transaction.timestamp).toLocaleString("es-DO"))
   row("REFERENCIA", transaction.transactionId || transaction.txId || transaction.id)
-  if (transaction.requestId) row("REQUEST ID", String(transaction.requestId))
   rule()
   doc.setFont("helvetica", "bold")
   doc.setFontSize(7)
@@ -75,13 +94,13 @@ function createReceipt(transaction: HaitiDepositTransaction, identity?: ReceiptI
   return doc
 }
 
-export function downloadRemittanceReceipt58mm(transaction: HaitiDepositTransaction, identity?: ReceiptIdentity) {
-  const doc = createReceipt(transaction, identity)
+export async function downloadRemittanceReceipt58mm(transaction: HaitiDepositTransaction, identity?: ReceiptIdentity) {
+  const doc = await createReceipt(transaction, identity)
   const reference = String(transaction.transactionId || transaction.txId || transaction.id).replace(/[^a-z0-9_-]/gi, "-")
   doc.save(`HispaniolaPay_${transaction.operator}_${reference}_58mm.pdf`)
 }
 
-export function printRemittanceReceipt58mm(transaction: HaitiDepositTransaction, identity?: ReceiptIdentity) {
-  const doc = createReceipt(transaction, identity)
+export async function printRemittanceReceipt58mm(transaction: HaitiDepositTransaction, identity?: ReceiptIdentity) {
+  const doc = await createReceipt(transaction, identity)
   window.open(String(doc.output("bloburl")), "_blank", "noopener,noreferrer")
 }
