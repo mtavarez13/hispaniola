@@ -207,15 +207,13 @@ function ClientWalletContent() {
   // Auto detect operator from phone
   useEffect(() => {
     const clean = sendPhone.replace(/\D/g, "");
-    if (sendOperator === "NatCash") setSendRecipientName("");
     if (clean.length >= 8) {
       const detected = detectHaitiOperator(clean);
       if (detected.operator === "MonCash" || detected.operator === "NatCash") {
         setSendOperator(detected.operator);
-        if (detected.operator === "NatCash") setSendRecipientName("");
       }
     }
-  }, [sendPhone, sendOperator]);
+  }, [sendPhone]);
 
   const sendAmountInUSD = primaryCurrency === "DOP" ? sendAmountUSD / rateDOP : primaryCurrency === "HTG" ? sendAmountUSD / rateHTG : sendAmountUSD;
   const sendFeeUSD = Math.round(sendAmountInUSD * (feePercent / 100) * 100) / 100;
@@ -229,7 +227,7 @@ function ClientWalletContent() {
 
   const handleSendRemittance = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (sendOperator === "MonCash" && !sendRecipientName.trim()) {
+    if (!sendRecipientName.trim()) {
       toast({
         variant: "destructive",
         title: "Nombre requerido",
@@ -259,43 +257,16 @@ function ClientWalletContent() {
     try {
       const idToken = await user.getIdToken();
       const idempotencyKey = crypto.randomUUID();
-      let verifiedRecipientName = sendRecipientName.trim();
-      let previewId = "";
-
-      if (sendOperator === "NatCash") {
-        const previewResponse = await fetch("/api/mobile/remittances/preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-          body: JSON.stringify({ operator: sendOperator, recipientPhone: sendPhone, recipientName: "", amount: sendAmountUSD, sourceCurrency: primaryCurrency, idempotencyKey }),
-        });
-        const previewBody = await previewResponse.json();
-        if (!previewResponse.ok || !previewBody.success) throw new Error(previewBody.error || "NatCash no pudo verificar el titular");
-        const preview = previewBody.preview || {};
-        verifiedRecipientName = String(preview.accountName || "").trim();
-        previewId = String(preview.id || "");
-        if (!verifiedRecipientName || !previewId) throw new Error("NatCash no devolvió un titular verificable");
-
-        const confirmed = window.confirm(
-          `CONFIRMAR REMESA NATCASH\n\nNúmero: +${formatHaitiPhoneNumber(sendPhone)}\nTitular: ${verifiedRecipientName}\nMonto a debitar: ${formatWallet(Number(preview.sourceAmount ?? sendAmountUSD))}\nMonto a recibir: ${Number(preview.amountHTG || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HTG\n\n¿Confirmas que estos datos son correctos?`
-        );
-        if (!confirmed) {
-          const cancellationResponse = await fetch("/api/mobile/remittances/preview", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-            body: JSON.stringify({ previewId }),
-          });
-          const cancellationBody = await cancellationResponse.json();
-          if (!cancellationResponse.ok || !cancellationBody.success) throw new Error(cancellationBody.error || "NatCash no confirmó la cancelación");
-          toast({ title: "Operación cancelada", description: "La solicitud NatCash fue cancelada sin debitar tu balance." });
-          return;
-        }
-        setSendRecipientName(verifiedRecipientName);
-      }
+      const verifiedRecipientName = sendRecipientName.trim();
+      const confirmed = window.confirm(
+        `CONFIRMAR REMESA ${sendOperator.toUpperCase()}\n\nNúmero: +${formatHaitiPhoneNumber(sendPhone)}\nDestinatario: ${verifiedRecipientName}\nMonto a debitar: ${formatWallet(sendAmountUSD)}\nMonto a recibir: ${receiveHTG.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HTG\n\n¿Confirmas que estos datos son correctos?`
+      );
+      if (!confirmed) return;
 
       const response = await fetch("/api/mobile/remittances", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ operator: sendOperator, recipientPhone: sendPhone, recipientName: verifiedRecipientName, amount: sendAmountUSD, sourceCurrency: primaryCurrency, idempotencyKey, previewId }),
+        body: JSON.stringify({ operator: sendOperator, recipientPhone: sendPhone, recipientName: verifiedRecipientName, amount: sendAmountUSD, sourceCurrency: primaryCurrency, idempotencyKey }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "No se pudo completar la remesa");
@@ -818,14 +789,10 @@ function ClientWalletContent() {
                         id="sendRecipient"
                         value={sendRecipientName}
                         onChange={(e) => setSendRecipientName(e.target.value)}
-                        placeholder={sendOperator === "NatCash" ? "NatCash mostrará el titular al revisar" : "Ej. Jean Baptiste Pierre"}
+                        placeholder="Ej. Jean Baptiste Pierre"
                         className="text-xs"
-                        readOnly={sendOperator === "NatCash"}
-                        required={sendOperator === "MonCash"}
+                        required
                       />
-                      {sendOperator === "NatCash" && (
-                        <p className="text-[10px] text-muted-foreground">Pulsa “Revisar y enviar” para consultar y confirmar el nombre, número y monto.</p>
-                      )}
                     </div>
                   </div>
 
@@ -910,9 +877,7 @@ function ClientWalletContent() {
                     )}
                     {balances.walletBalance < totalSendUSD
                       ? "Saldo Insuficiente en Billetera"
-                      : sendOperator === "NatCash"
-                        ? `Revisar titular y monto • ${formatWallet(totalSendUSD)}`
-                        : `Confirmar Envío (${sendOperator}) • ${formatWallet(totalSendUSD)}`}
+                      : `Confirmar Envío (${sendOperator}) • ${formatWallet(totalSendUSD)}`}
                   </Button>
                 </form>
               </CardContent>

@@ -64,7 +64,7 @@ export default function SendMoneyPage() {
     setRecipient(prev => ({
       ...prev,
       phone: val,
-      name: deliveryMethod === 'mobile_wallet' && detected.operator === 'NatCash' ? '' : prev.name,
+      name: prev.name,
     }))
     if (transactionData?.destination === 'HT' || deliveryMethod === 'mobile_wallet') {
       if (detected.operator === 'MonCash' || detected.operator === 'NatCash') {
@@ -74,8 +74,7 @@ export default function SendMoneyPage() {
   }
 
   const handleRecipientSubmit = async () => {
-    const natCashWillResolveName = deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash'
-    if (!recipient.phone || (!natCashWillResolveName && !recipient.name)) {
+    if (!recipient.phone || !recipient.name) {
       toast({
         variant: "destructive",
         title: "Datos incompletos",
@@ -111,7 +110,8 @@ export default function SendMoneyPage() {
             amount: transactionData?.amountReceived || 100,
             content: `Remesa HispaniolaPay (${haitiOperator})`,
             recipientName: recipient.name,
-            requireReceiverName: haitiOperator === 'NatCash',
+            autoConfirm: true,
+            requireReceiverName: false,
           }),
         })
 
@@ -327,7 +327,7 @@ export default function SendMoneyPage() {
                 : step === 'recipient' 
                   ? 'Ingresa la información de la persona que recibirá los fondos.'
                   : step === 'bencash_confirm'
-                    ? 'Verifica los datos del titular de la cuenta antes de transferir.'
+                    ? 'La operación quedó pendiente y requiere completar la confirmación técnica.'
                     : 'Transacción completada exitosamente.'}
           </p>
         </div>
@@ -480,16 +480,12 @@ export default function SendMoneyPage() {
                       <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                       <Input
                         id="recipientName"
-                        placeholder={haitiOperator === 'NatCash' ? "Se completará desde NatCash" : "Ej: Jean Baptiste Pierre"}
-                        className={`pl-10 ${haitiOperator === 'NatCash' && recipient.name ? 'border-emerald-400 bg-emerald-50 font-bold' : ''}`}
+                        placeholder="Ej: Jean Baptiste Pierre"
+                        className="pl-10"
                         value={recipient.name}
                         onChange={(e) => setRecipient({...recipient, name: e.target.value})}
-                        readOnly={deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash'}
                       />
                     </div>
-                    {deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash' && (
-                      <p className="text-[11px] text-muted-foreground">El nombre real aparecerá en la pantalla de confirmación después de pulsar “Revisar envío”.</p>
-                    )}
                   </div>
                 </div>
 
@@ -526,7 +522,7 @@ export default function SendMoneyPage() {
                     </>
                   ) : (
                     <>
-                      {deliveryMethod === 'mobile_wallet' && haitiOperator === 'NatCash' ? 'Revisar envío' : deliveryMethod === 'mobile_wallet' ? 'Validar Billetera y Continuar' : 'Confirmar y Enviar'} <ArrowRight className="w-4 h-4" />
+                      {deliveryMethod === 'mobile_wallet' ? 'Confirmar y enviar' : 'Confirmar y Enviar'} <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </Button>

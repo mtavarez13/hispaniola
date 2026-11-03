@@ -138,7 +138,6 @@ export default function HaitiRemittancesPage() {
 
   // Account & Operator Detection State
   const [accountLookupLoading, setAccountLookupLoading] = useState<boolean>(false)
-  const [accountLookupMessage, setAccountLookupMessage] = useState<string>("")
   const [detectedAccount, setDetectedAccount] = useState<{
     name: string
     status: string
@@ -304,13 +303,11 @@ export default function HaitiRemittancesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("ALL")
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Detecta el operador. NatCash devuelve el titular en la solicitud real,
-  // después de pulsar Revisar, para evitar crear consultas transaccionales duplicadas.
+  // Detecta el operador; el envío se procesa directamente sin consulta previa de titular.
   useEffect(() => {
     if (!phone) {
       setDetectedAccount(null)
       setDetectedOperatorInfo(null)
-      setAccountLookupMessage("")
       return
     }
 
@@ -326,12 +323,6 @@ export default function HaitiRemittancesPage() {
 
     setAccountLookupLoading(false)
     setDetectedAccount(null)
-    if (detected.operator === "NatCash" || (isManualOperator && operator === "NatCash")) {
-      setRecipientName("")
-      setAccountLookupMessage("Pulsa Revisar envío para mostrar el número, titular NatCash y monto antes de confirmar.")
-    } else {
-      setAccountLookupMessage("")
-    }
   }, [phone, isManualOperator, operator])
 
   // Check API server status
@@ -366,11 +357,11 @@ export default function HaitiRemittancesPage() {
 
   // Execute Step 1: Request Cash-In (API 1) con soporte de Auto-Confirmación
   const handleRequestCashIn = async () => {
-    if (operator === "MonCash" && (!recipientName || !recipientName.trim())) {
+    if (!recipientName || !recipientName.trim()) {
       toast({
         variant: "destructive",
         title: "Nombre de destinatario obligatorio",
-        description: "MonCash no ofrece consulta previa; debes escribir el nombre y apellido del destinatario.",
+        description: "Debes escribir el nombre y apellido del destinatario.",
       })
       return
     }
@@ -403,6 +394,13 @@ export default function HaitiRemittancesPage() {
       return
     }
 
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        `CONFIRMAR REMESA ${operator.toUpperCase()}\n\nNúmero: +${formatHaitiPhoneNumber(phone)}\nDestinatario: ${recipientName.trim()}\nMonto a enviar: US$${amountUSD.toFixed(2)}\nMonto a recibir: ${calculatedHTG.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HTG\n\n¿Confirmas que estos datos son correctos?`
+      )
+      if (!confirmed) return
+    }
+
     setLoading(true)
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hide-sidebar-for-transaction"))
@@ -420,11 +418,10 @@ export default function HaitiRemittancesPage() {
           content: content || (operator === "MonCash" ? "Remesa MonCash HispaniolaPay" : "Transfert NatCash"),
           baseUrl: baseUrlInput || settings?.bencashBaseUrl || undefined,
           privateKey: privateKeyInput || settings?.bencashPrivateKey || undefined,
-          // NatCash debe devolver el titular en requestcashin antes de que el usuario confirme.
-          autoConfirm: false,
+          autoConfirm: true,
           verifyCode: verifyCode || "1111",
           recipientName: recipientName.trim(),
-          requireReceiverName: operator === "NatCash",
+          requireReceiverName: false,
         }),
       })
 
@@ -1463,7 +1460,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         </CardDescription>
                       </div>
                       <Badge className={operator === "MonCash" ? "bg-red-500 text-white font-bold text-xs" : "bg-blue-600 text-white font-bold text-xs"}>
-                        {operator === "MonCash" ? "MonCash Directo" : "NatCash (Paso 1)"}
+                        {operator === "MonCash" ? "MonCash Directo" : "NatCash Directo"}
                       </Badge>
                     </div>
                   </CardHeader>
@@ -1593,8 +1590,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                           id="recipientName"
                           value={recipientName}
                           onChange={(e) => setRecipientName(e.target.value)}
-                          placeholder={operator === "NatCash" ? "NatCash mostrará el titular al revisar" : "Escribe el nombre y apellido"}
-                          readOnly={operator === "NatCash"}
+                          placeholder="Escribe el nombre y apellido"
                           className={`h-11 text-sm font-bold ${
                             detectedAccount?.verified
                               ? "border-emerald-400 bg-emerald-50 text-emerald-950"
@@ -1602,14 +1598,12 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                               ? "border-amber-300 bg-white"
                               : "border-blue-300 bg-white"
                           }`}
-                          required={operator === "MonCash"}
+                          required
                         />
                         <p className="text-[10px] text-muted-foreground">
                           {detectedAccount?.verified
                             ? "Nombre recuperado y verificado automáticamente por el API NatCash."
-                            : operator === "NatCash"
-                            ? accountLookupMessage || "Pulsa Revisar envío para consultar el titular y confirmar el monto."
-                            : "MonCash no ofrece consulta previa de titular por número."}
+                            : "El envío se realizará directamente con los datos ingresados."}
                         </p>
                       </div>
 
@@ -1786,12 +1780,10 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                     <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
                       <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
                         <UserCheck className="w-4 h-4 text-emerald-600" />
-                        {operator === "NatCash" ? "Verificación del titular antes de confirmar" : "Validación disponible en la respuesta de MonCash"}
+                        Envío directo a {operator}
                       </div>
                       <p className="text-[11px] text-emerald-700 leading-snug mt-1">
-                        {operator === "NatCash"
-                          ? "Primero consultaremos la cuenta y mostraremos el nombre devuelto por NatCash. El desembolso solo se ejecutará cuando confirmes ese titular."
-                          : "El API oficial de MonCash no publica una consulta independiente de titular; el nombre se mostrará únicamente cuando el proveedor lo incluya en la respuesta del envío."}
+                        No se realizará una consulta previa del titular. Confirma el número, nombre y monto antes de enviar.
                       </p>
                     </div>
                   </CardContent>
@@ -1812,7 +1804,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         <>
                           <RefreshCw className="w-5 h-5 animate-spin text-white" />
                           <span className="tracking-wide font-bold">
-                            {operator === "NatCash" ? "Consultando titular NatCash..." : "Enviando a MonCash..."}
+                            Enviando a {operator}...
                           </span>
                         </>
                       ) : !isAdmin && amountUSD > walletBalances.walletBalance ? (
@@ -1835,7 +1827,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                             </>
                           ) : (
                             <>
-                              <span>Consultar Titular y Continuar</span>
+                              <span>Enviar a Billetera NatCash</span>
                               <ArrowRight className="w-4 h-4" />
                             </>
                           )}
@@ -2296,7 +2288,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                       <ul className="space-y-1 text-muted-foreground list-disc pl-4 text-[11px]">
                         <li>Detección automática de operador MonCash vs NatCash.</li>
                         <li>Normalización de prefijo internacional Haití (+509).</li>
-                        <li>Inquiry previo para confirmar identidad del titular de la cuenta.</li>
+                        <li>Envío directo con confirmación previa de número, nombre y monto.</li>
                       </ul>
                     </div>
                   </CardContent>

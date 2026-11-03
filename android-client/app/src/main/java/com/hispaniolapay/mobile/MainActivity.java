@@ -1099,8 +1099,7 @@ public final class MainActivity extends Activity {
         EditText phone = input("Número de Haití (8 dígitos)", InputType.TYPE_CLASS_PHONE);
         EditText name = input("Nombre del destinatario", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         EditText amount = input("Monto total en " + walletCurrency(), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        name.setEnabled(false);
-        TextView holderStatus = text("Pulsa Revisar y enviar para mostrar el número, titular NatCash y monto antes de confirmar.", 11, MUTED, Typeface.NORMAL);
+        TextView holderStatus = text("Escribe el nombre del destinatario y confirma los datos antes de enviar.", 11, MUTED, Typeface.NORMAL);
         content.addView(phone, params(-1, dp(57), 9));
         content.addView(name, params(-1, dp(57), 11));
         content.addView(holderStatus, params(-1, -2, 5));
@@ -1110,10 +1109,9 @@ public final class MainActivity extends Activity {
             selected[0] = "NatCash";
             styleOperator(natcash, true);
             styleOperator(moncash, false);
-            name.setText("");
-            name.setEnabled(false);
+            name.setEnabled(true);
             holderStatus.setTextColor(MUTED);
-            holderStatus.setText("Pulsa Revisar y enviar para mostrar el número, titular NatCash y monto antes de confirmar.");
+            holderStatus.setText("NatCash enviará directamente con los datos ingresados.");
         });
         moncash.setOnClickListener(v -> {
             selected[0] = "MonCash";
@@ -1121,7 +1119,7 @@ public final class MainActivity extends Activity {
             styleOperator(moncash, true);
             name.setEnabled(true);
             holderStatus.setTextColor(MUTED);
-            holderStatus.setText("MonCash no ofrece consulta previa del titular por número.");
+            holderStatus.setText("MonCash enviará directamente con los datos ingresados.");
         });
 
         LinearLayout quote = card();
@@ -1154,22 +1152,17 @@ public final class MainActivity extends Activity {
             String recipientPhone = phone.getText().toString().replaceAll("\\D", "");
             if (recipientPhone.startsWith("509")) recipientPhone = recipientPhone.substring(3);
             double value = parseAmount(amount.getText().toString());
-            if (("MonCash".equals(selected[0]) && recipient.length() < 3) || recipientPhone.length() != 8 || value < 1) { errorDialog("Revisa los datos", "Completa un teléfono haitiano de 8 dígitos, un monto válido y el nombre cuando uses MonCash."); return; }
+            if (recipient.length() < 3 || recipientPhone.length() != 8 || value < 1) { errorDialog("Revisa los datos", "Completa el nombre, un teléfono haitiano de 8 dígitos y un monto válido."); return; }
             if (value > balance) { errorDialog("Saldo insuficiente", "Disponible: " + walletMoney(balance)); return; }
             double fee = round(value * feePct / 100d);
             double valueUsd = toUsd(value, sourceCurrency, rates);
             double htg = round("DOP".equals(sourceCurrency) ? (value - fee) * dopToHtg : "HTG".equals(sourceCurrency) ? value - fee : (valueUsd - (valueUsd * feePct / 100d)) * rate);
             String finalPhone = recipientPhone;
-            boolean requiresNatCashVerification = "NatCash".equals(selected[0]);
-            if (requiresNatCashVerification) {
-                executeSend(send, selected[0], "", finalPhone, value);
-                return;
-            }
-            new AlertDialog.Builder(this).setTitle(requiresNatCashVerification ? "Consultar titular NatCash" : "Confirmar remesa MonCash")
+            new AlertDialog.Builder(this).setTitle("Confirmar remesa " + selected[0])
                     .setMessage(selected[0] + " · +509 " + finalPhone + "\n" + recipient + "\n\nDebitar: " + walletMoney(value) + "\nRecibe: " + String.format(Locale.US, "%,.2f HTG", htg) + "\nTarifa incluida: " + walletMoney(fee)
-                            + (requiresNatCashVerification ? "\n\nNatCash mostrará el titular real antes del débito final." : "\n\nMonCash no ofrece consulta independiente del titular antes del envío."))
+                            + "\n\nConfirma que el número, nombre y monto son correctos.")
                     .setNegativeButton("Cancelar", null)
-                    .setPositiveButton(requiresNatCashVerification ? "Consultar titular" : "Enviar ahora", (dialog, which) -> executeSend(send, selected[0], recipient, finalPhone, value)).show();
+                    .setPositiveButton("Enviar ahora", (dialog, which) -> executeSend(send, selected[0], recipient, finalPhone, value)).show();
         });
     }
 
@@ -1279,49 +1272,8 @@ public final class MainActivity extends Activity {
     private void executeSend(Button button, String operator, String recipient, String phone, double amount) {
         button.setEnabled(false);
         String idempotencyKey = UUID.randomUUID().toString();
-        if (!"NatCash".equals(operator)) {
-            button.setText("Procesando de forma segura…");
-            performRemittance(button, operator, recipient, phone, amount, idempotencyKey, "");
-            return;
-        }
-
-        button.setText("Consultando titular NatCash…");
-        executor.execute(() -> {
-            try {
-                JSONObject payload = new JSONObject().put("operator", operator).put("recipientName", recipient).put("recipientPhone", phone).put("amount", amount).put("sourceCurrency", walletCurrency()).put("idempotencyKey", idempotencyKey);
-                JSONObject response = api.previewRemittance(payload);
-                JSONObject preview = response.optJSONObject("preview");
-                if (preview == null || !preview.optBoolean("recipientNameVerified", false)) throw new Exception("NatCash no devolvió un titular verificable");
-                String holder = preview.optString("accountName", "").trim();
-                String previewId = preview.optString("id", "");
-                double amountHtg = preview.optDouble("amountHTG", 0);
-                runOnUiThread(() -> {
-                    button.setEnabled(true);
-                    button.setText("Revisar y enviar");
-                    new AlertDialog.Builder(this)
-                            .setTitle("Titular confirmado por NatCash")
-                            .setMessage("Número: +509 " + phone + "\nTitular: " + holder + "\nMonto a enviar: " + walletMoney(amount) + "\nMonto a recibir: " + String.format(Locale.US, "%,.2f HTG", amountHtg) + "\n\nConfirma que el número, el titular y el monto son correctos. El saldo todavía no ha sido debitado.")
-                            .setCancelable(false)
-                            .setNegativeButton("Cancelar", (dialog, which) -> cancelRemittancePreview(previewId))
-                            .setPositiveButton("Confirmar y enviar", (dialog, which) -> performRemittance(button, operator, holder, phone, amount, idempotencyKey, previewId))
-                            .show();
-                });
-            } catch (Exception error) {
-                runOnUiThread(() -> { button.setEnabled(true); button.setText("Revisar y enviar"); errorDialog("No se pudo verificar el titular", friendly(error)); });
-            }
-        });
-    }
-
-    private void cancelRemittancePreview(String previewId) {
-        if (previewId == null || previewId.isEmpty()) return;
-        executor.execute(() -> {
-            try {
-                api.cancelRemittancePreview(previewId);
-                runOnUiThread(() -> toast("Solicitud NatCash cancelada sin débito"));
-            } catch (Exception error) {
-                runOnUiThread(() -> errorDialog("No se confirmó la cancelación", friendly(error)));
-            }
-        });
+        button.setText("Procesando de forma segura…");
+        performRemittance(button, operator, recipient, phone, amount, idempotencyKey, "");
     }
 
     private void performRemittance(Button button, String operator, String recipient, String phone, double amount, String idempotencyKey, String previewId) {
