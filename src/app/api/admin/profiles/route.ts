@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
+import { proxyAdministrativeRequestToFirebase } from '@/lib/firebase-backend-proxy';
 import { adminAuthError, requireAdmin } from '@/lib/server-auth';
 import { fromUsd, getEffectiveRates, normalizeWalletCurrency, toUsd } from '@/lib/currency';
 
@@ -9,6 +10,9 @@ export const dynamic = 'force-dynamic';
 function clean(value: unknown, max: number) { return String(value ?? '').trim().slice(0, max); }
 
 export async function GET(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     await requireAdmin(req, { allowOperations: true });
     const snapshot = await adminDb.collection('users').limit(300).get();
@@ -36,6 +40,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const proxied = await proxyAdministrativeRequestToFirebase(req);
+  if (proxied) return proxied;
+
   try {
     await requireAdmin(req);
     const body = await req.json();
