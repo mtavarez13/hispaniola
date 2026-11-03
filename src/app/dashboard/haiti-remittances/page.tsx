@@ -242,11 +242,13 @@ export default function HaitiRemittancesPage() {
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const demoTransactionIds = new Set(["HT-TX-901", "HT-TX-902", "HT-TX-903"])
+          const persistedTransactions = parsed.filter((transaction: HaitiDepositTransaction) => !demoTransactionIds.has(transaction.id))
           // AUTO-RECONCILIACIÓN:
           // Transacciones de MonCash (o la orden con RequestId 398317 / TxId 98317)
           // se acreditan de forma definitiva en Digicel con código 200 y no deben permanecer en 'pending'.
           let hasChanges = false
-          const reconciled = parsed.map((t: HaitiDepositTransaction) => {
+          const reconciled = persistedTransactions.map((t: HaitiDepositTransaction) => {
             const isTarget =
               t.operator === "MonCash" ||
               String(t.txId).includes("98317") ||
@@ -259,7 +261,7 @@ export default function HaitiRemittancesPage() {
             return t
           })
           setTransactions(reconciled)
-          if (hasChanges) {
+          if (hasChanges || reconciled.length !== parsed.length) {
             localStorage.setItem("bencash_transactions", JSON.stringify(reconciled))
           }
         }
