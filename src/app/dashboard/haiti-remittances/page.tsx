@@ -25,7 +25,6 @@ import {
   RefreshCw, 
   ArrowRight, 
   Phone, 
-  DollarSign, 
   ShieldCheck, 
   Key, 
   Globe, 
@@ -100,12 +99,45 @@ export default function HaitiRemittancesPage() {
   const [walletBalances, setWalletBalances] = useState(() =>
     getClientWalletBalances(user?.uid || "client", userProfile)
   )
+  const profileCurrency = userProfile?.primaryCurrency === "DOP" || userProfile?.primaryCurrency === "HTG"
+    ? userProfile.primaryCurrency
+    : "USD"
+  const [primaryCurrency, setPrimaryCurrency] = useState<"USD" | "DOP" | "HTG">(profileCurrency)
 
   useEffect(() => {
     if (user?.uid) {
       setWalletBalances(getClientWalletBalances(user.uid, userProfile))
     }
   }, [user?.uid, userProfile])
+
+  useEffect(() => {
+    setPrimaryCurrency(profileCurrency)
+  }, [profileCurrency])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    user.getIdToken()
+      .then((token) => fetch("/api/mobile/account", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }))
+      .then(async (response) => {
+        const data = await response.json()
+        if (!response.ok || !data.success) throw new Error(data.error || "No se pudo sincronizar la cuenta")
+        if (cancelled) return
+        const account = data.account || {}
+        const currency = account.primaryCurrency === "DOP" || account.primaryCurrency === "HTG" ? account.primaryCurrency : "USD"
+        setPrimaryCurrency(currency)
+        setWalletBalances((current) => ({
+          ...current,
+          walletBalance: Number(account.walletBalance ?? current.walletBalance),
+          savingsBalance: Number(account.savingsBalance ?? current.savingsBalance),
+          clientCode: account.clientCode || current.clientCode,
+          phone: account.phone || current.phone,
+          idNumber: account.idNumber || current.idNumber,
+        }))
+      })
+      .catch((error) => console.warn("Remittance account sync failed:", error))
+    return () => { cancelled = true }
+  }, [user])
 
   // Restrict: Non-admin users cannot access API config tab
   useEffect(() => {
@@ -128,7 +160,7 @@ export default function HaitiRemittancesPage() {
   const [phone, setPhone] = useState("50940885084")
   const [operator, setOperator] = useState<"MonCash" | "NatCash">("MonCash")
   const [isManualOperator, setIsManualOperator] = useState<boolean>(false)
-  const [amountUSD, setAmountUSD] = useState<number>(50)
+  const [sendAmount, setSendAmount] = useState<number>(50)
   const [content, setContent] = useState("Transfert Familial")
   const [senderName, setSenderName] = useState("Carlos Rodríguez")
   const [senderPhone, setSenderPhone] = useState("+1 829 555 0192")
@@ -341,15 +373,20 @@ export default function HaitiRemittancesPage() {
     }
   }, [settings])
 
+  const currencySymbol = primaryCurrency === "DOP" ? "RD$" : primaryCurrency === "HTG" ? "G" : "US$"
+  const rateDOP = settings?.publicRateDOP ?? 58.5
   const rateHTG = settings?.publicRateHTG ?? 132.20
+  const rateDOPToHTG = settings?.publicRateDOPToHTG ?? 2.03
   const publicFeePct = userProfile?.remittanceFeePercent ?? settings?.haitiPublicFeePercent ?? 8.0
   const bencashSharePct = settings?.haitiBencashSharePercent ?? 3.0
   const subAgentSharePct = settings?.haitiSubAgentSharePercent ?? 2.0
   const hispaniolaSharePct = settings?.haitiHispaniolaSharePercent ?? 3.0
 
+  const amountUSD = Number((primaryCurrency === "DOP" ? sendAmount / rateDOP : primaryCurrency === "HTG" ? sendAmount / rateHTG : sendAmount).toFixed(2))
+  const feeAmountSource = Number((sendAmount * (publicFeePct / 100)).toFixed(2))
+  const amountAfterFeeSource = Math.max(0, sendAmount - feeAmountSource)
+  const calculatedHTG = Number((primaryCurrency === "DOP" ? amountAfterFeeSource * rateDOPToHTG : primaryCurrency === "HTG" ? amountAfterFeeSource : amountAfterFeeSource * rateHTG).toFixed(2))
   const feeAmountUSD = Number((amountUSD * (publicFeePct / 100)).toFixed(2))
-  const amountAfterFeeUSD = Math.max(0, amountUSD - feeAmountUSD)
-  const calculatedHTG = Number((amountAfterFeeUSD * rateHTG).toFixed(2))
 
   const bencashFeeUSD = Number((amountUSD * (bencashSharePct / 100)).toFixed(2))
   const subAgentFeeUSD = Number((amountUSD * (subAgentSharePct / 100)).toFixed(2))
@@ -385,18 +422,18 @@ export default function HaitiRemittancesPage() {
     }
 
     // Validación de balance para clientes y subagentes: no pueden enviar más de su balance disponible
-    if (!isAdmin && amountUSD > walletBalances.walletBalance) {
+    if (!isAdmin && sendAmount > walletBalances.walletBalance) {
       toast({
         variant: "destructive",
         title: "Límite de Balance Excedido",
-        description: `Tu saldo disponible aprobado por el administrador es de $${walletBalances.walletBalance.toFixed(2)} USD. No puedes enviar $${amountUSD.toFixed(2)} USD.`,
+        description: `Tu saldo disponible es de ${currencySymbol}${walletBalances.walletBalance.toFixed(2)} ${primaryCurrency}. No puedes enviar ${currencySymbol}${sendAmount.toFixed(2)} ${primaryCurrency}.`,
       })
       return
     }
 
     if (typeof window !== "undefined") {
       const confirmed = window.confirm(
-        `CONFIRMAR REMESA ${operator.toUpperCase()}\n\nNúmero: +${formatHaitiPhoneNumber(phone)}\nDestinatario: ${recipientName.trim()}\nMonto a enviar: US$${amountUSD.toFixed(2)}\nMonto a recibir: ${calculatedHTG.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HTG\n\n¿Confirmas que estos datos son correctos?`
+        `CONFIRMAR REMESA ${operator.toUpperCase()}\n\nNúmero: +${formatHaitiPhoneNumber(phone)}\nDestinatario: ${recipientName.trim()}\nMonto a enviar: ${currencySymbol}${sendAmount.toFixed(2)} ${primaryCurrency}\nMonto a recibir: ${calculatedHTG.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HTG\n\n¿Confirmas que estos datos son correctos?`
       )
       if (!confirmed) return
     }
@@ -492,7 +529,7 @@ export default function HaitiRemittancesPage() {
 
         // Descontar saldo y registrar movimiento en la billetera del cliente/subagente
         if (!isAdmin && user?.uid) {
-          const newBal = Math.max(0, Math.round((walletBalances.walletBalance - amountUSD) * 100) / 100)
+          const newBal = Math.max(0, Math.round((walletBalances.walletBalance - sendAmount) * 100) / 100)
           const newBalances = { ...walletBalances, walletBalance: newBal }
           saveClientWalletBalances(user.uid, newBalances)
           setWalletBalances(newBalances)
@@ -708,7 +745,7 @@ export default function HaitiRemittancesPage() {
 
         // Descontar saldo y registrar movimiento en la billetera del cliente/subagente al confirmar NatCash
         if (!isAdmin && user?.uid) {
-          const newBal = Math.max(0, Math.round((walletBalances.walletBalance - amountUSD) * 100) / 100)
+          const newBal = Math.max(0, Math.round((walletBalances.walletBalance - sendAmount) * 100) / 100)
           const newBalances = { ...walletBalances, walletBalance: newBal }
           saveClientWalletBalances(user.uid, newBalances)
           setWalletBalances(newBalances)
@@ -1147,7 +1184,7 @@ export default function HaitiRemittancesPage() {
           baseUrl: baseUrlInput.trim() || "https://reseller.bencashgroup.com/api/",
           privateKey: privateKeyInput.trim() || undefined,
           toAccountNumber: phone,
-          amount: amountUSD * (settings?.haitiExchangeRate || 125.57),
+          amount: calculatedHTG,
           content: content,
         }),
       })
@@ -1425,10 +1462,10 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                         Balance Disponible Aprobado por Admin
                       </div>
                       <div className="text-2xl font-black text-white">
-                        ${walletBalances.walletBalance.toFixed(2)} <span className="text-xs font-normal text-emerald-300">USD</span>
+                        {currencySymbol}{walletBalances.walletBalance.toFixed(2)} <span className="text-xs font-normal text-emerald-300">{primaryCurrency}</span>
                       </div>
                       <div className="text-[11px] text-slate-300">
-                        Bolsillo de Ahorro: <strong>${walletBalances.savingsBalance.toFixed(2)} USD</strong> (Protegido)
+                        Bolsillo de Ahorro: <strong>{currencySymbol}{walletBalances.savingsBalance.toFixed(2)} {primaryCurrency}</strong> (Protegido)
                       </div>
                     </div>
                   </div>
@@ -1654,26 +1691,26 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                       </p>
                     </div>
 
-                    {/* Amount USD & Calculated HTG */}
+                    {/* Amount in the configured wallet currency & calculated HTG */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-secondary/30 border border-border">
                       <div className="space-y-1.5">
                         <Label htmlFor="amount" className="text-xs font-bold text-primary">
-                          Monto a Enviar (USD)
+                          Monto a Enviar ({primaryCurrency})
                         </Label>
                         <div className="relative">
-                          <DollarSign className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                          <span className="absolute left-3 top-3 text-xs font-black text-muted-foreground">{currencySymbol}</span>
                           <Input
                             id="amount"
                             type="number"
                             min="5"
                             step="5"
-                            value={amountUSD}
-                            onChange={(e) => setAmountUSD(parseFloat(e.target.value) || 0)}
-                            className="pl-9 h-11 font-bold text-base bg-white"
+                            value={sendAmount}
+                            onChange={(e) => setSendAmount(parseFloat(e.target.value) || 0)}
+                            className="pl-12 h-11 font-bold text-base bg-white"
                           />
                         </div>
                         <span className="text-[10px] text-muted-foreground font-medium">
-                          Tasa general al público ({publicFeePct}%): -${feeAmountUSD.toFixed(2)} USD
+                          Tarifa configurada ({publicFeePct}%): -{currencySymbol}{feeAmountSource.toFixed(2)} {primaryCurrency}
                           <span className="text-[9px] text-muted-foreground block text-slate-500">
                             (BenCash: {bencashSharePct}% • Sub-Agente: {subAgentSharePct}% • Margen Hispaniola: {hispaniolaSharePct}%)
                           </span>
@@ -1688,17 +1725,19 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                           <span suppressHydrationWarning>{formatNumber(calculatedHTG)}</span>
                           <span className="text-xs font-bold text-muted-foreground">HTG</span>
                         </div>
-                        <span className="text-[10px] text-emerald-600 font-semibold" suppressHydrationWarning>Tasa aplicada: 1 USD = {rateHTG} HTG</span>
+                        <span className="text-[10px] text-emerald-600 font-semibold" suppressHydrationWarning>
+                          Tasa aplicada: {primaryCurrency === "DOP" ? `RD$1 = ${rateDOPToHTG} HTG` : primaryCurrency === "HTG" ? "G1 = 1 HTG" : `US$1 = ${rateHTG} HTG`}
+                        </span>
                       </div>
 
                       {/* Alerta de Límite de Balance Excedido */}
-                      {!isAdmin && amountUSD > walletBalances.walletBalance && (
+                      {!isAdmin && sendAmount > walletBalances.walletBalance && (
                         <div className="sm:col-span-2 p-3.5 bg-red-50/90 border border-red-200 rounded-xl text-xs text-red-900 flex items-start gap-2.5">
                           <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                           <div className="space-y-1">
                             <span className="font-bold text-sm block text-red-950">Límite de Balance Excedido</span>
                             <span className="leading-relaxed block text-red-800">
-                              Tu balance disponible aprobado por el administrador es de <strong>${walletBalances.walletBalance.toFixed(2)} USD</strong>. No puedes enviar un monto mayor (${amountUSD.toFixed(2)} USD). Si dispones de fondos en tu Bolsillo de Ahorro (${walletBalances.savingsBalance.toFixed(2)} USD), trasládalos a la Billetera Principal o realiza un depósito en un subagente.
+                              Tu balance disponible es de <strong>{currencySymbol}{walletBalances.walletBalance.toFixed(2)} {primaryCurrency}</strong>. No puedes enviar un monto mayor ({currencySymbol}{sendAmount.toFixed(2)} {primaryCurrency}). Si dispones de fondos en tu Bolsillo de Ahorro ({currencySymbol}{walletBalances.savingsBalance.toFixed(2)} {primaryCurrency}), trasládalos a la Billetera Principal o realiza un depósito.
                             </span>
                           </div>
                         </div>
@@ -1791,9 +1830,9 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                   <CardFooter className="bg-secondary/20 p-4 border-t border-border">
                     <Button
                       onClick={handleRequestCashIn}
-                      disabled={loading || (!isAdmin && (amountUSD <= 0 || amountUSD > walletBalances.walletBalance))}
+                      disabled={loading || sendAmount <= 0 || (!isAdmin && sendAmount > walletBalances.walletBalance)}
                       className={
-                        !isAdmin && amountUSD > walletBalances.walletBalance
+                        !isAdmin && sendAmount > walletBalances.walletBalance
                           ? "w-full h-14 bg-slate-400 text-white font-black text-sm md:text-base gap-2 rounded-xl cursor-not-allowed opacity-80"
                           : operator === "MonCash"
                           ? "w-full h-14 bg-[#E60000] hover:bg-[#CC0000] active:bg-[#B30000] text-white font-black text-base md:text-lg gap-3 rounded-xl shadow-xl shadow-red-600/40 border-2 border-red-500 ring-4 ring-red-400/30 transition-all duration-200 transform hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden cursor-pointer"
@@ -1807,10 +1846,10 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                             Enviando a {operator}...
                           </span>
                         </>
-                      ) : !isAdmin && amountUSD > walletBalances.walletBalance ? (
+                      ) : !isAdmin && sendAmount > walletBalances.walletBalance ? (
                         <>
                           <AlertCircle className="w-5 h-5 text-white" />
-                          <span>Saldo Insuficiente (Límite Disponible: ${walletBalances.walletBalance.toFixed(2)} USD)</span>
+                          <span>Saldo insuficiente (disponible: {currencySymbol}{walletBalances.walletBalance.toFixed(2)} {primaryCurrency})</span>
                         </>
                       ) : (
                         <>
@@ -1889,7 +1928,7 @@ Bonjou ${recipientName}! Ou resevwa ${calculatedHTG.toLocaleString()} HTG sou ko
                     <div className="p-4 rounded-xl bg-secondary/40 border border-border space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Monto a enviar:</span>
-                        <span className="font-bold text-primary">US${amountUSD.toFixed(2)}</span>
+                        <span className="font-bold text-primary">{currencySymbol}{sendAmount.toFixed(2)} {primaryCurrency}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Monto a recibir:</span>

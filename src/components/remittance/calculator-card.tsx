@@ -22,7 +22,7 @@ interface CalculatorCardProps {
 export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCardProps) {
   const { t } = useI18n();
   const { settings } = useSystemSettings();
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false)
@@ -32,6 +32,12 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
   const [explanation, setExplanation] = useState<string>("")
   const [loadingAi, setLoadingAi] = useState(false)
 
+  const profileCurrency = userProfile?.primaryCurrency === "DOP" || userProfile?.primaryCurrency === "HTG"
+    ? userProfile.primaryCurrency
+    : "USD"
+  const [sourceCurrency, setSourceCurrency] = useState<"USD" | "DOP" | "HTG">(profileCurrency)
+  const sourceSymbol = sourceCurrency === "DOP" ? "RD$" : sourceCurrency === "HTG" ? "G" : "US$"
+
   // Norma general de tasa: Para Haití usa haitiPublicFeePercent (8% por defecto)
   const feePercentage = destination === "HT"
     ? (settings?.haitiPublicFeePercent ?? 8.0)
@@ -40,10 +46,23 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
   const feeAmount = amount * (feePercentage / 100)
   const amountAfterFee = Math.max(0, amount - feeAmount)
   
-  // Calculate public exchange rate from system settings
-  const exchangeRate = payoutCurrency === "DOP" 
-    ? (settings?.publicRateDOP ?? 58.5) 
-    : (payoutCurrency === "HTG" ? (settings?.publicRateHTG ?? 132.2) : 1.0)
+  // Convert from the wallet currency configured by the administrator.
+  const usdToDop = settings?.publicRateDOP ?? 58.5
+  const usdToHtg = settings?.publicRateHTG ?? 132.2
+  const dopToHtg = settings?.publicRateDOPToHTG ?? 2.03
+  const exchangeRate = payoutCurrency === sourceCurrency
+    ? 1
+    : sourceCurrency === "DOP" && payoutCurrency === "HTG"
+      ? dopToHtg
+      : sourceCurrency === "HTG" && payoutCurrency === "DOP"
+        ? 1 / dopToHtg
+        : sourceCurrency === "USD" && payoutCurrency === "DOP"
+          ? usdToDop
+          : sourceCurrency === "USD" && payoutCurrency === "HTG"
+            ? usdToHtg
+            : sourceCurrency === "DOP" && payoutCurrency === "USD"
+              ? 1 / usdToDop
+              : 1 / usdToHtg
   
   const amountReceived = amountAfterFee * exchangeRate
   const isAgentOrAdmin = user && (user.role === "admin" || user.role === "sub_agent" || user.role === "agent")
@@ -51,6 +70,26 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    setSourceCurrency(profileCurrency)
+  }, [profileCurrency])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    user.getIdToken()
+      .then((token) => fetch("/api/mobile/account", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }))
+      .then(async (response) => {
+        const data = await response.json()
+        if (!response.ok || !data.success) throw new Error(data.error || "No se pudo sincronizar la moneda")
+        if (cancelled) return
+        const currency = data.account?.primaryCurrency
+        setSourceCurrency(currency === "DOP" || currency === "HTG" ? currency : "USD")
+      })
+      .catch((error) => console.warn("Calculator currency sync failed:", error))
+    return () => { cancelled = true }
+  }, [user])
 
   useEffect(() => {
     if (destination === "DO" && payoutCurrency === "HTG") {
@@ -80,7 +119,7 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
     } catch (error) {
       console.error(error)
       // Fallback
-      setExplanation(`Desglose: $${amount} USD menos comisión del ${feePercentage}% (-$${feeAmount.toFixed(2)} USD). El destinatario recibe ${formatNumber(amountReceived, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${payoutCurrency} con tasa oficial ${exchangeRate}.`)
+      setExplanation(`Desglose: ${sourceSymbol}${amount} ${sourceCurrency} menos comisión del ${feePercentage}% (-${sourceSymbol}${feeAmount.toFixed(2)} ${sourceCurrency}). El destinatario recibe ${formatNumber(amountReceived, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${payoutCurrency} con tasa ${exchangeRate}.`)
     } finally {
       setLoadingAi(false)
     }
@@ -103,7 +142,7 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
             {t('calc_title')}
           </CardTitle>
           <Badge variant="secondary" className="bg-accent text-white border-none">
-            {t('calc_fee_badge')}
+            {feePercentage}% {t('calc_fee_badge')}
           </Badge>
         </div>
         <CardDescription className="text-primary-foreground/70">
@@ -113,15 +152,15 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
       <CardContent className="p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <Label htmlFor="amount" className="text-muted-foreground">{t('calc_label_amount')}</Label>
+            <Label htmlFor="amount" className="text-muted-foreground">{t('calc_label_amount')} ({sourceCurrency})</Label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+              <span className="absolute left-3 top-2.5 text-xs font-bold text-muted-foreground">{sourceSymbol}</span>
               <Input
                 id="amount"
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(Number(e.target.value))}
-                className="pl-7 focus-visible:ring-accent"
+                className="pl-12 focus-visible:ring-accent"
               />
             </div>
           </div>
@@ -167,10 +206,10 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
 
           <div className="mt-3 pt-3 border-t border-slate-200/80 w-full flex flex-wrap items-center justify-between text-[11px] text-slate-600 gap-2">
             <span>
-              Tasa fijada: <strong>{feePercentage}%</strong> (-${feeAmount.toFixed(2)} USD)
+              Tarifa: <strong>{feePercentage}%</strong> (-{sourceSymbol}{feeAmount.toFixed(2)} {sourceCurrency})
             </span>
             <span>
-              Tasa cambio: <strong>1 USD = {exchangeRate} {payoutCurrency}</strong>
+              Tasa cambio: <strong>1 {sourceCurrency} = {Number(exchangeRate.toFixed(4))} {payoutCurrency}</strong>
             </span>
           </div>
         </div>
@@ -235,7 +274,8 @@ export function CalculatorCard({ onConfirm, showBankLink = true }: CalculatorCar
             className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 text-xs shadow-sm"
             onClick={() => {
               if (onConfirm) {
-                onConfirm({ amount, destination, payoutCurrency, feeAmount, amountReceived, exchangeRate })
+                const amountUSD = sourceCurrency === "DOP" ? amount / usdToDop : sourceCurrency === "HTG" ? amount / usdToHtg : amount
+                onConfirm({ amount, amountSent: amount, amountUSD, sourceCurrency, sourceSymbol, destination, payoutCurrency, feePercentage, feeAmount, amountReceived, exchangeRate })
               } else {
                 router.push(`/dashboard/haiti-remittances?amount=${amount}&currency=${payoutCurrency}`)
               }

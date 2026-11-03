@@ -142,7 +142,7 @@ export default function SendMoneyPage() {
                 toAccountNumber: cleanPhone,
                 recipientName: recipient.name,
                 recipientAccountId: data.result?.receiver?.accountId,
-                amountUSD: transactionData?.amountSent || 0,
+                amountUSD: transactionData?.amountUSD || transactionData?.amountSent || 0,
                 amountHTG: transactionData?.amountReceived || 0,
                 feeHTG: 0,
                 totalAmountHTG: transactionData?.amountReceived || 0,
@@ -494,11 +494,11 @@ export default function SendMoneyPage() {
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Monto enviado:</span>
-                      <span className="font-semibold">${transactionData?.amountSent || transactionData?.amount} USD</span>
+                      <span className="font-semibold">{transactionData?.sourceSymbol || "US$"}{transactionData?.amountSent || transactionData?.amount} {transactionData?.sourceCurrency || "USD"}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Comisión del servicio (5%):</span>
-                      <span className="font-semibold text-destructive">-${transactionData?.feeAmount?.toFixed(2)} USD</span>
+                      <span className="text-muted-foreground">Comisión del servicio ({transactionData?.feePercentage ?? 5}%):</span>
+                      <span className="font-semibold text-destructive">-{transactionData?.sourceSymbol || "US$"}{transactionData?.feeAmount?.toFixed(2)} {transactionData?.sourceCurrency || "USD"}</span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-border/50">
                       <span className="font-bold text-primary">Recibe en {transactionData?.payoutCurrency || 'HTG'}:</span>
