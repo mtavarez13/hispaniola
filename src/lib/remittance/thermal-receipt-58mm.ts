@@ -9,7 +9,7 @@ const money = (value: number) => Number(value || 0).toLocaleString("en-US", {
 })
 
 async function loadBrandLogo() {
-  const response = await fetch("/branding/hispaniolapay-mark.png", { cache: "force-cache" })
+  const response = await fetch("/branding/hispaniolapay-mark-transparent.png", { cache: "force-cache" })
   if (!response.ok) throw new Error("No se pudo cargar el logo de HispaniolaPay")
   const blob = await response.blob()
   return await new Promise<string>((resolve, reject) => {
