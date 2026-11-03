@@ -157,6 +157,12 @@ function ClientWalletContent() {
   }, [refreshData]);
 
   useEffect(() => {
+    if (userProfile?.primaryCurrency === "DOP" || userProfile?.primaryCurrency === "HTG" || userProfile?.primaryCurrency === "USD") {
+      setPrimaryCurrency(userProfile.primaryCurrency);
+    }
+  }, [userProfile?.primaryCurrency]);
+
+  useEffect(() => {
     const timer = window.setInterval(refreshData, 15000);
     const onFocus = () => refreshData();
     window.addEventListener("focus", onFocus);

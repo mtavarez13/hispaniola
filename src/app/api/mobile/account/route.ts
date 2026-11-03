@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
+import { proxyRequestToFirebaseBackend } from '@/lib/firebase-backend-proxy';
 import { authenticatedUserError, requireAuthenticatedUser } from '@/lib/server-auth';
 import { getEffectiveRates, normalizeWalletCurrency, toUsd } from '@/lib/currency';
 
@@ -18,6 +19,9 @@ function jsonDate(value: any): string | null {
 }
 
 export async function GET(req: NextRequest) {
+  const proxied = await proxyRequestToFirebaseBackend(req);
+  if (proxied) return proxied;
+
   try {
     const identity = await requireAuthenticatedUser(req);
     const profile = identity.profile;
