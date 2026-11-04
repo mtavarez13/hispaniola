@@ -43,7 +43,6 @@ export interface RequestCashInPayload {
   privateKey?: string;
   autoConfirm?: boolean; // Si es true, ejecuta inmediatamente la confirmación (API 2) para que el depósito no quede en estado 'pending'
   verifyCode?: string; // Código de confirmación (por defecto "1111")
-  useLocalPhoneFormat?: boolean; // Compatibilidad NatCash: firma y envía los 8 dígitos locales, sin 509
 }
 
 export interface RequestCashInResponse {
@@ -405,9 +404,8 @@ export class BencashDepositService {
     const safeRequestId = sanitizeRequestId(params.requestId);
     const accessKey = `${key}${safeRequestId}`;
     const cleanContent = (params.content || 'remittance').trim();
-    // El valor firmado debe ser EXACTAMENTE el mismo que se envía en el body.
-    // La normalización internacional/local se realiza antes de llamar este método.
-    const cleanPhone = String(params.toAccountNumber || '').replace(/\D/g, '');
+    // Deposit Channel API: el número se firma en formato internacional 509XXXXXXXX.
+    const cleanPhone = formatHaitiPhoneNumber(params.toAccountNumber);
     const amountVal = params.amount;
 
     const inner = `accessKey=${accessKey}$requestId=${safeRequestId}$toAccountNumber=${cleanPhone}$amount=${amountVal}$content=${cleanContent}$timestamp=${params.timestamp}`;
@@ -514,13 +512,9 @@ export class BencashDepositService {
 
     let activeReqId = sanitizeRequestId(payload.requestId);
     const timestamp = payload.timestamp || Date.now();
-    const normalizedAccountNumber = formatHaitiPhoneNumber(payload.toAccountNumber);
-    // La documentación v4 usa 509XXXXXXXX, pero el canal NatCash de producción
-    // puede responder "Invalid phone number" y exigir los 8 dígitos locales.
-    // En ambos casos, cuerpo y firma usan exactamente el mismo valor.
-    const toAccountNumber = payload.useLocalPhoneFormat && /^509\d{8}$/.test(normalizedAccountNumber)
-      ? normalizedAccountNumber.slice(3)
-      : normalizedAccountNumber;
+    // Deposit Channel API exige el número internacional completo 509XXXXXXXX.
+    // El mismo valor se utiliza en el cuerpo y en la cadena firmada.
+    const toAccountNumber = formatHaitiPhoneNumber(payload.toAccountNumber);
     const content = (payload.content || 'remittance').trim();
     const amount = Number(payload.amount);
 
@@ -684,6 +678,21 @@ export class BencashDepositService {
             // Si el error NO es de firma, no reintentar otras variantes de firma
             const isSignatureError = msg.toLowerCase().includes('signature') || msg.toLowerCase().includes('firma');
             if (!isSignatureError) {
+              if (msg.toLowerCase().includes('invalid phone')) {
+                return {
+                  resultCode: '400',
+                  resultMessage: `BenCash no reconoce ${toAccountNumber} como una cuenta NatCash válida o activa. El número fue enviado en el formato oficial 509XXXXXXXX.`,
+                  message: msg,
+                  requestId: activeReqId,
+                  data: {
+                    providerHttpStatus: response.status,
+                    endpoint,
+                    toAccountNumber,
+                    providerMessage: msg,
+                  },
+                };
+              }
+
               if (msg.toLowerCase().includes('privatekey')) {
                 return {
                   resultCode: '503',
@@ -1593,34 +1602,10 @@ export function generateConfirmCashInSignature(params: {
 }
 
 export async function executeRequestCashIn(payload: RequestCashInPayload): Promise<RequestCashInResponse> {
-  const normalizedPhone = formatHaitiPhoneNumber(payload.toAccountNumber);
-  const operator = detectHaitiOperator(normalizedPhone).operator;
-  const internationalResult = await bencashService.requestCashIn({
+  return bencashService.requestCashIn({
     ...payload,
-    toAccountNumber: normalizedPhone,
-    useLocalPhoneFormat: false,
+    toAccountNumber: formatHaitiPhoneNumber(payload.toAccountNumber),
   });
-
-  const providerMessage = String(
-    internationalResult.resultMessage || internationalResult.message || ''
-  ).toLowerCase();
-  const rejectedInternationalPhone =
-    String(internationalResult.resultCode) === '400'
-    && providerMessage.includes('invalid phone');
-
-  // Solo reintentar cuando BenCash confirma que NO aceptó el número internacional.
-  // Se usa un RequestId y timestamp nuevos para no provocar "RequestId duplicated".
-  if (operator === 'NatCash' && rejectedInternationalPhone) {
-    return bencashService.requestCashIn({
-      ...payload,
-      requestId: undefined,
-      timestamp: undefined,
-      toAccountNumber: normalizedPhone,
-      useLocalPhoneFormat: true,
-    });
-  }
-
-  return internationalResult;
 }
 
 export async function executeConfirmCashIn(payload: ConfirmCashInPayload): Promise<ConfirmCashInResponse> {
