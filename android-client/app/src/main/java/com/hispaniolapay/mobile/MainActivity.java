@@ -175,12 +175,20 @@ public final class MainActivity extends Activity {
 
     private void showLogin() {
         activeScreen = "Login";
+        FrameLayout loginFrame = new FrameLayout(this);
+        loginFrame.setBackground(darkMode
+                ? roundGradient(Color.rgb(5, 24, 27), Color.rgb(7, 41, 55), 0)
+                : roundGradient(Color.rgb(225, 252, 238), Color.rgb(236, 249, 255), 0));
+        LoginBrandRainView brandRain = new LoginBrandRainView(this);
+        loginFrame.addView(brandRain, new FrameLayout.LayoutParams(-1, -1));
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Color.TRANSPARENT);
         LinearLayout page = column();
         page.setGravity(Gravity.CENTER_HORIZONTAL);
         page.setPadding(dp(24), dp(38), dp(24), dp(30));
-        page.setBackgroundColor(BG);
+        page.setBackgroundColor(Color.TRANSPARENT);
         scroll.addView(page);
 
         ImageView mark = brandImage();
@@ -234,7 +242,13 @@ public final class MainActivity extends Activity {
             });
         });
         google.setOnClickListener(v -> startActivityForResult(googleClient.getSignInIntent(), GOOGLE_SIGN_IN));
-        setContentView(scroll);
+        loginFrame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(loginFrame);
+
+        ObjectAnimator markFloat = ObjectAnimator.ofFloat(mark, View.TRANSLATION_Y, 0f, -dp(8), 0f);
+        markFloat.setDuration(1800L);
+        markFloat.setRepeatCount(ObjectAnimator.INFINITE);
+        markFloat.start();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {

@@ -11,8 +11,8 @@ android {
         applicationId = "com.hispaniolapay.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "2.25.0-optimizada"
+        versionCode = 34
+        versionName = "2.26.0-nativa"
 
         // The Android client talks to the stable Firebase backend. Private
         // provider credentials remain server-side and are never packaged here.
