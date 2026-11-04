@@ -43,7 +43,6 @@ export interface RequestCashInPayload {
   privateKey?: string;
   autoConfirm?: boolean; // Si es true, ejecuta inmediatamente la confirmación (API 2) para que el depósito no quede en estado 'pending'
   verifyCode?: string; // Código de confirmación (por defecto "1111")
-  useLocalPhoneFormat?: boolean; // NatCash 55 puede requerir los 8 dígitos locales sin 509
 }
 
 export interface RequestCashInResponse {
@@ -456,9 +455,7 @@ export class BencashDepositService {
     return params.casing === 'upper' ? hash.toUpperCase() : hash.toLowerCase();
   }
 
-  /**
-   * Genera las variantes posibles de firma para requestcashin
-   */
+  /** Genera la firma oficial v4 para requestcashin. */
   public getRequestCashInSignatureCandidates(params: {
     requestId: number;
     toAccountNumber: string;
@@ -467,48 +464,15 @@ export class BencashDepositService {
     timestamp: number;
     privateKey: string;
   }) {
-    return [
-      {
-        id: 'lower_braces',
-        name: 'Minúsculas con llaves (Estándar Oficial Node/Bencash)',
-        signature: this.generateRequestCashInSignature({ ...params, casing: 'lower', includeBraces: true }),
-        timestamp: params.timestamp,
-      },
-      {
-        id: 'upper_braces',
-        name: 'Mayúsculas con llaves (.NET C#)',
-        signature: this.generateRequestCashInSignature({ ...params, casing: 'upper', includeBraces: true }),
-        timestamp: params.timestamp,
-      },
-      {
-        id: 'lower_nobraces',
-        name: 'Minúsculas sin llaves',
-        signature: this.generateRequestCashInSignature({ ...params, casing: 'lower', includeBraces: false }),
-        timestamp: params.timestamp,
-      },
-      {
-        id: 'upper_nobraces',
-        name: 'Mayúsculas sin llaves',
-        signature: this.generateRequestCashInSignature({ ...params, casing: 'upper', includeBraces: false }),
-        timestamp: params.timestamp,
-      },
-      {
-        id: 'lower_sec_timestamp',
-        name: 'Minúsculas con timestamp en segundos',
-        signature: this.generateRequestCashInSignature({
-          ...params,
-          timestamp: Math.floor(params.timestamp / 1000),
-          casing: 'lower',
-          includeBraces: true,
-        }),
-        timestamp: Math.floor(params.timestamp / 1000),
-      },
-    ];
+    return [{
+      id: 'official_v4',
+      name: 'Firma oficial v4 (minúsculas, llaves y timestamp en milisegundos)',
+      signature: this.generateRequestCashInSignature({ ...params, casing: 'lower', includeBraces: true }),
+      timestamp: params.timestamp,
+    }];
   }
 
-  /**
-   * Genera las variantes posibles de firma y cuerpo para confirmcashin
-   */
+  /** Genera la firma y el cuerpo oficiales v4 para confirmcashin. */
   public getConfirmCashInSignatureCandidates(params: {
     requestId: number;
     txId: string;
@@ -516,25 +480,9 @@ export class BencashDepositService {
     isConfirm: string;
     privateKey: string;
   }) {
-    return [
-      {
-        id: 'dto_lower_no_verify',
-        name: 'Esquema DTO Swagger (Sin verifyCode, Minúsculas)',
-        signature: this.generateConfirmCashInSignature({
-          ...params,
-          includeVerifyCode: false,
-          casing: 'lower',
-          includeBraces: true,
-        }),
-        bodyData: {
-          requestId: params.requestId,
-          txId: params.txId,
-          isConfirm: params.isConfirm,
-        },
-      },
-      {
-        id: 'legacy_lower_with_verify',
-        name: 'Variante heredada con verifyCode (Minúsculas)',
+    return [{
+        id: 'official_v4_with_verify',
+        name: 'Firma oficial v4 con verifyCode (Minúsculas)',
         signature: this.generateConfirmCashInSignature({
           ...params,
           includeVerifyCode: true,
@@ -547,54 +495,7 @@ export class BencashDepositService {
           verifyCode: params.verifyCode,
           isConfirm: params.isConfirm,
         },
-      },
-      {
-        id: 'legacy_upper_with_verify',
-        name: 'Variante con verifyCode (Mayúsculas)',
-        signature: this.generateConfirmCashInSignature({
-          ...params,
-          includeVerifyCode: true,
-          casing: 'upper',
-          includeBraces: true,
-        }),
-        bodyData: {
-          requestId: params.requestId,
-          txId: params.txId,
-          verifyCode: params.verifyCode,
-          isConfirm: params.isConfirm,
-        },
-      },
-      {
-        id: 'dto_upper_no_verify',
-        name: 'Esquema DTO Swagger (Sin verifyCode, Mayúsculas)',
-        signature: this.generateConfirmCashInSignature({
-          ...params,
-          includeVerifyCode: false,
-          casing: 'upper',
-          includeBraces: true,
-        }),
-        bodyData: {
-          requestId: params.requestId,
-          txId: params.txId,
-          isConfirm: params.isConfirm,
-        },
-      },
-      {
-        id: 'dto_upper_nobraces',
-        name: 'Esquema DTO sin llaves (Mayúsculas)',
-        signature: this.generateConfirmCashInSignature({
-          ...params,
-          includeVerifyCode: false,
-          casing: 'upper',
-          includeBraces: false,
-        }),
-        bodyData: {
-          requestId: params.requestId,
-          txId: params.txId,
-          isConfirm: params.isConfirm,
-        },
-      },
-    ];
+    }];
   }
 
   /**
@@ -610,10 +511,9 @@ export class BencashDepositService {
 
     let activeReqId = sanitizeRequestId(payload.requestId);
     const timestamp = payload.timestamp || Date.now();
-    const normalizedAccountNumber = formatHaitiPhoneNumber(payload.toAccountNumber);
-    const toAccountNumber = payload.useLocalPhoneFormat && normalizedAccountNumber.startsWith('509')
-      ? normalizedAccountNumber.slice(3)
-      : normalizedAccountNumber;
+    // Deposit Channel API v4 exige el número internacional completo 509XXXXXXXX.
+    // El mismo valor debe usarse en el cuerpo y en la cadena firmada.
+    const toAccountNumber = formatHaitiPhoneNumber(payload.toAccountNumber);
     const content = (payload.content || 'remittance').trim();
     const amount = Number(payload.amount);
 
@@ -621,7 +521,7 @@ export class BencashDepositService {
     if (activePrivateKey) {
       BencashDepositService.setRuntimeCredentials(rawBaseUrl, activePrivateKey);
       try {
-        const MAX_DUP_RETRIES = 3;
+        const MAX_DUP_RETRIES = 6;
         let lastResponse: any = null;
         let lastErrorMsg = '';
 
@@ -812,9 +712,12 @@ export class BencashDepositService {
         }
 
         // Si se agotaron todos los candidatos de firma
+        const duplicateExhausted = lastErrorMsg.toLowerCase().includes('duplicat');
         return {
-          resultCode: String(lastResponse?.resultCode || '503'),
-          resultMessage: `Bencash API rechazó la firma: "${lastErrorMsg}". Se probaron variantes de firma Mayúsculas/Minúsculas/DTO. Verifique que la Private Key en la cabecera 'skml' coincida exactamente con la asignada en sellertest.bencashgroup.com.`,
+          resultCode: duplicateExhausted ? '409' : String(lastResponse?.resultCode || '503'),
+          resultMessage: duplicateExhausted
+            ? 'BenCash rechazó varios identificadores únicos consecutivos. No se creó la remesa; inténtelo nuevamente.'
+            : `BenCash rechazó la firma oficial v4: "${lastErrorMsg}". Verifique que la Private Key de producción en la cabecera 'skml' sea la asignada al canal.`,
           message: lastErrorMsg,
           requestId: activeReqId,
         };
@@ -1683,37 +1586,9 @@ export function generateConfirmCashInSignature(params: {
 }
 
 export async function executeRequestCashIn(payload: RequestCashInPayload): Promise<RequestCashInResponse> {
-  const normalizedPhone = formatHaitiPhoneNumber(payload.toAccountNumber);
-  const isNatCash55 = /^50955\d{6}$/.test(normalizedPhone);
-
-  // El canal Natcom acepta ciertas cuentas 55 en formato local (8 dígitos),
-  // aunque HispaniolaPay conserva +509 para mostrar, guardar e imprimir.
-  if (isNatCash55 && payload.useLocalPhoneFormat !== false) {
-    const localResult = await bencashService.requestCashIn({
-      ...payload,
-      toAccountNumber: normalizedPhone,
-      useLocalPhoneFormat: true,
-    });
-    const localMessage = String(localResult.resultMessage || localResult.message || '').toLowerCase();
-    const invalidLocalPhone = String(localResult.resultCode) === '400'
-      && (localMessage.includes('invalid phone') || localMessage.includes('phone number'));
-
-    // Solo se prueba el formato internacional cuando el proveedor rechazó
-    // explícitamente el formato local; una solicitud aceptada jamás se repite.
-    if (invalidLocalPhone) {
-      return bencashService.requestCashIn({
-        ...payload,
-        requestId: undefined,
-        toAccountNumber: normalizedPhone,
-        useLocalPhoneFormat: false,
-      });
-    }
-    return localResult;
-  }
-
   return bencashService.requestCashIn({
     ...payload,
-    toAccountNumber: normalizedPhone,
+    toAccountNumber: formatHaitiPhoneNumber(payload.toAccountNumber),
   });
 }
 
