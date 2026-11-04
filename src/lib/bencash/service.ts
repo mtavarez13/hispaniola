@@ -43,6 +43,7 @@ export interface RequestCashInPayload {
   privateKey?: string;
   autoConfirm?: boolean; // Si es true, ejecuta inmediatamente la confirmación (API 2) para que el depósito no quede en estado 'pending'
   verifyCode?: string; // Código de confirmación (por defecto "1111")
+  useLocalPhoneFormat?: boolean; // NatCash 55 puede requerir los 8 dígitos locales sin 509
 }
 
 export interface RequestCashInResponse {
@@ -609,7 +610,10 @@ export class BencashDepositService {
 
     let activeReqId = sanitizeRequestId(payload.requestId);
     const timestamp = payload.timestamp || Date.now();
-    const toAccountNumber = formatHaitiPhoneNumber(payload.toAccountNumber);
+    const normalizedAccountNumber = formatHaitiPhoneNumber(payload.toAccountNumber);
+    const toAccountNumber = payload.useLocalPhoneFormat && normalizedAccountNumber.startsWith('509')
+      ? normalizedAccountNumber.slice(3)
+      : normalizedAccountNumber;
     const content = (payload.content || 'remittance').trim();
     const amount = Number(payload.amount);
 
@@ -1679,7 +1683,38 @@ export function generateConfirmCashInSignature(params: {
 }
 
 export async function executeRequestCashIn(payload: RequestCashInPayload): Promise<RequestCashInResponse> {
-  return bencashService.requestCashIn(payload);
+  const normalizedPhone = formatHaitiPhoneNumber(payload.toAccountNumber);
+  const isNatCash55 = /^50955\d{6}$/.test(normalizedPhone);
+
+  // El canal Natcom acepta ciertas cuentas 55 en formato local (8 dígitos),
+  // aunque HispaniolaPay conserva +509 para mostrar, guardar e imprimir.
+  if (isNatCash55 && payload.useLocalPhoneFormat !== false) {
+    const localResult = await bencashService.requestCashIn({
+      ...payload,
+      toAccountNumber: normalizedPhone,
+      useLocalPhoneFormat: true,
+    });
+    const localMessage = String(localResult.resultMessage || localResult.message || '').toLowerCase();
+    const invalidLocalPhone = String(localResult.resultCode) === '400'
+      && (localMessage.includes('invalid phone') || localMessage.includes('phone number'));
+
+    // Solo se prueba el formato internacional cuando el proveedor rechazó
+    // explícitamente el formato local; una solicitud aceptada jamás se repite.
+    if (invalidLocalPhone) {
+      return bencashService.requestCashIn({
+        ...payload,
+        requestId: undefined,
+        toAccountNumber: normalizedPhone,
+        useLocalPhoneFormat: false,
+      });
+    }
+    return localResult;
+  }
+
+  return bencashService.requestCashIn({
+    ...payload,
+    toAccountNumber: normalizedPhone,
+  });
 }
 
 export async function executeConfirmCashIn(payload: ConfirmCashInPayload): Promise<ConfirmCashInResponse> {
