@@ -68,9 +68,11 @@ export async function POST(req: NextRequest) {
       );
     }
     const normalizedSelected = String(operator || channel || '').trim().toLowerCase();
+    const resolvedOperator = detected.operator !== 'Unknown'
+      ? detected.operator
+      : normalizedSelected === 'natcash' ? 'NatCash' : 'MonCash';
     const isMoncash =
-      normalizedSelected === 'moncash' ||
-      (normalizedSelected === '' && detected.operator === 'MonCash');
+      resolvedOperator === 'MonCash';
 
     if (isMoncash) {
       const moncashRes = await moncashRequestCashIn({

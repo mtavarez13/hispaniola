@@ -4,7 +4,8 @@
  */
 
 export function formatHaitiPhoneNumber(phone: string): string {
-  const clean = (phone || '').replace(/\D/g, '');
+  let clean = (phone || '').replace(/\D/g, '');
+  if (clean.startsWith('00509')) clean = clean.slice(2);
   if (clean.startsWith('509')) {
     return clean;
   }
@@ -16,20 +17,22 @@ export function formatHaitiPhoneNumber(phone: string): string {
 
 export function detectHaitiOperator(phone: string): {
   operator: 'MonCash' | 'NatCash' | 'Unknown';
+  label: string;
   logoColor: string;
+  isDetected: boolean;
 } {
   const clean = formatHaitiPhoneNumber(phone);
   const localPart = clean.startsWith('509') ? clean.slice(3) : clean;
 
   const prefix2 = localPart.slice(0, 2);
   const moncashPrefixes = ['31', '34', '36', '37', '38', '39', '40', '41', '42', '43', '44', '46', '47', '48', '49'];
-  const natcashPrefixes = ['22', '32', '33', '35', '45', '55'];
+  const natcashPrefixes = ['22', '28', '29', '32', '33', '35', '45', '55'];
 
   if (moncashPrefixes.includes(prefix2)) {
-    return { operator: 'MonCash', logoColor: '#E60000' };
+    return { operator: 'MonCash', label: 'Digicel MonCash', logoColor: '#E60000', isDetected: true };
   } else if (natcashPrefixes.includes(prefix2)) {
-    return { operator: 'NatCash', logoColor: '#006699' };
+    return { operator: 'NatCash', label: 'Natcom NatCash', logoColor: '#006699', isDetected: true };
   }
 
-  return { operator: 'MonCash', logoColor: '#E60000' };
+  return { operator: 'Unknown', label: 'Operador no identificado', logoColor: '#64748B', isDetected: false };
 }

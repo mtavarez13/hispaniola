@@ -65,11 +65,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determinar operador: prioridad a la selección explícita del usuario
+    // El prefijo telefónico prevalece sobre una selección manual equivocada.
+    // En especial, 55xxxxxx y 50955xxxxxx siempre pertenecen a Natcom NatCash.
     const normalizedSelected = String(operator || channel || '').trim().toLowerCase();
+    const resolvedOperator = detected.operator !== 'Unknown'
+      ? detected.operator
+      : normalizedSelected === 'natcash' ? 'NatCash' : 'MonCash';
     const isMoncash =
-      normalizedSelected === 'moncash' ||
-      (normalizedSelected === '' && detected.operator === 'MonCash');
+      resolvedOperator === 'MonCash';
 
     // 1. FLUJO MONCASH: POST /api/channel/moncash/requestcashin
     // + Auto-Confirm en /api/channel/confirmcashin (hasta 60 seg) para que las órdenes no queden Pending

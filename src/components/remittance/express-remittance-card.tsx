@@ -27,6 +27,7 @@ import { useSystemSettings } from "@/lib/settings-context"
 import { useI18n } from "@/lib/i18n/context"
 import { formatNumber } from "@/lib/utils"
 import Link from "next/link"
+import { detectHaitiOperator } from "@/lib/bencash/utils"
 
 export function ExpressRemittanceCard() {
   const { t } = useI18n()
@@ -49,6 +50,12 @@ export function ExpressRemittanceCard() {
   // Recipient info
   const [recipientName, setRecipientName] = useState("")
   const [recipientPhone, setRecipientPhone] = useState("")
+
+  useEffect(() => {
+    const detected = detectHaitiOperator(recipientPhone)
+    if (detected.operator === "NatCash") setOperator("Natcash")
+    if (detected.operator === "MonCash") setOperator("MonCash")
+  }, [recipientPhone])
 
   // Options
   const [autoNotifyWhatsApp, setAutoNotifyWhatsApp] = useState(true)

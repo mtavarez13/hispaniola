@@ -1135,6 +1135,19 @@ public final class MainActivity extends Activity {
             holderStatus.setTextColor(MUTED);
             holderStatus.setText("MonCash enviará directamente con los datos ingresados.");
         });
+        phone.addTextChangedListener(new SimpleWatcher() {
+            @Override public void afterTextChanged(Editable editable) {
+                String digits = editable.toString().replaceAll("\\D", "");
+                String local = digits.startsWith("509") ? digits.substring(3) : digits;
+                if (local.startsWith("55")) {
+                    selected[0] = "NatCash";
+                    styleOperator(natcash, true);
+                    styleOperator(moncash, false);
+                    holderStatus.setTextColor(NATCASH_BLUE);
+                    holderStatus.setText("Número 55 identificado automáticamente como Natcom NatCash.");
+                }
+            }
+        });
 
         LinearLayout quote = card();
         TextView quoteAmount = text("El destinatario recibe: 0 HTG", 17, INK, Typeface.BOLD);
@@ -1165,6 +1178,11 @@ public final class MainActivity extends Activity {
             String recipient = name.getText().toString().trim();
             String recipientPhone = phone.getText().toString().replaceAll("\\D", "");
             if (recipientPhone.startsWith("509")) recipientPhone = recipientPhone.substring(3);
+            if (recipientPhone.startsWith("55")) {
+                selected[0] = "NatCash";
+                styleOperator(natcash, true);
+                styleOperator(moncash, false);
+            }
             double value = parseAmount(amount.getText().toString());
             if (recipient.length() < 3 || recipientPhone.length() != 8 || value < 1) { errorDialog("Revisa los datos", "Completa el nombre, un teléfono haitiano de 8 dígitos y un monto válido."); return; }
             if (value > balance) { errorDialog("Saldo insuficiente", "Disponible: " + walletMoney(balance)); return; }

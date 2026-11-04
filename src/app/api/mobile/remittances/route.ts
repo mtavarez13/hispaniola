@@ -6,6 +6,7 @@ import { getPersistentBencashServerConfig } from '@/lib/server-config';
 import {
   executeConfirmCashIn,
   executeRequestCashIn,
+  detectHaitiOperator,
   extractBencashReceiverName,
   formatHaitiPhoneNumber,
   moncashRequestCashIn,
@@ -61,9 +62,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Solicitud JSON inválida' }, { status: 400 });
   }
 
-  const operator = String(body.operator || '').toLowerCase() === 'moncash' ? 'MonCash' :
+  const requestedOperator = String(body.operator || '').toLowerCase() === 'moncash' ? 'MonCash' :
     String(body.operator || '').toLowerCase() === 'natcash' ? 'NatCash' : '';
   const recipientPhone = formatHaitiPhoneNumber(String(body.recipientPhone || ''));
+  const detectedOperator = detectHaitiOperator(recipientPhone).operator;
+  const operator = detectedOperator !== 'Unknown' ? detectedOperator : requestedOperator;
   let recipientName = String(body.recipientName || '').trim().slice(0, 100);
   const requestedAmount = roundMoney(Number(body.amount ?? body.amountUSD));
   const legacyAmountInUSD = body.amount == null;
