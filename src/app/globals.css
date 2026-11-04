@@ -176,3 +176,68 @@
     color: hsl(var(--foreground));
   }
 }
+@keyframes landing-money-rain {
+  0% {
+    transform: translate3d(0, -16vh, 0) rotate(-8deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.5;
+  }
+  88% {
+    opacity: 0.42;
+  }
+  100% {
+    transform: translate3d(var(--landing-rain-drift), 118vh, 0) rotate(24deg);
+    opacity: 0;
+  }
+}
+
+.landing-money-rain {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.landing-rain-particle {
+  position: absolute;
+  top: -18%;
+  display: grid;
+  place-items: center;
+  animation-name: landing-money-rain;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+  filter: drop-shadow(0 8px 12px rgb(5 150 105 / 0.16));
+}
+
+.landing-rain-hispaniola {
+  opacity: 0.46;
+}
+
+.landing-rain-binance {
+  color: #d99b08;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.55);
+  box-shadow: inset 0 0 0 1px rgb(217 155 8 / 0.22);
+}
+
+.landing-rain-money {
+  color: #047857;
+  border: 1px solid rgb(5 150 105 / 0.25);
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.58);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-rain-particle {
+    animation: none;
+    opacity: 0.12;
+  }
+}

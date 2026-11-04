@@ -35,6 +35,7 @@ import { AppLogo } from "@/components/brand/app-logo"
 import { OfficialBankAccountsCard } from "@/components/banking/official-bank-accounts-card"
 import { HispaniolaIslandMap } from "@/components/landing/hispaniola-island-map"
 import { CorridorBanks } from "@/components/landing/corridor-banks"
+import { LandingMoneyRain } from "@/components/landing/landing-money-rain"
 import { useI18n } from "@/lib/i18n/context"
 import { useAuth } from "@/lib/auth-context"
 import { useSystemSettings, DEFAULT_LANDING_SUB_AGENTS } from "@/lib/settings-context"
@@ -263,13 +264,14 @@ export default function Home() {
       </nav>
 
       {/* Hero Section with Vibrant Colors & Intuitive Action Cards */}
-      <section className="relative pt-12 sm:pt-16 pb-20 px-4 overflow-hidden">
+      <section className="relative pt-12 sm:pt-16 pb-20 px-4 overflow-hidden bg-gradient-to-br from-emerald-100 via-green-50 to-cyan-100 border-b border-emerald-200/80">
+        <LandingMoneyRain />
         {/* Background decorative glow spots */}
-        <div className="absolute top-10 left-1/4 w-96 h-96 bg-blue-400/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-40 right-10 w-96 h-96 bg-red-400/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-20 right-1/3 w-80 h-80 bg-amber-400/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-10 left-1/4 w-96 h-96 bg-emerald-500/25 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-40 right-10 w-96 h-96 bg-lime-400/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-20 right-1/3 w-80 h-80 bg-amber-400/20 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto space-y-12">
+        <div className="relative z-10 max-w-7xl mx-auto space-y-12">
           {/* Main Hero Header */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
             
@@ -300,7 +302,7 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row gap-3.5 pt-2">
                 {user && (
                   <Link href={userProfile?.role === "admin" || userProfile?.role === "agent" ? "/dashboard/haiti-remittances" : "/dashboard/wallet?tab=send"}>
-                    <Button className="h-14 px-7 bg-blue-600 hover:bg-blue-700 text-white font-black text-base rounded-2xl gap-2.5 shadow-xl shadow-blue-600/25 w-full sm:w-auto group">
+                    <Button className="h-14 px-7 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base rounded-2xl gap-2.5 shadow-xl shadow-emerald-700/25 w-full sm:w-auto group">
                       <Send className="w-5 h-5 text-amber-300" />
                       Enviar a Haití Ahora
                       <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform text-white/80" />
@@ -403,7 +405,7 @@ export default function Home() {
             {/* Calculator Card on Hero Right - Only calculator on public page */}
             <div className="lg:col-span-5" id="calculator">
               <div className="relative">
-                <div className="absolute -inset-1.5 bg-gradient-to-r from-blue-600 via-amber-500 to-red-600 rounded-[2.8rem] blur-lg opacity-30" />
+                <div className="absolute -inset-1.5 bg-gradient-to-r from-emerald-600 via-lime-400 to-amber-500 rounded-[2.8rem] blur-lg opacity-40" />
                 <div className="relative bg-white rounded-[2.5rem] shadow-2xl border border-white/60 p-2 overflow-hidden">
                   <div className="p-3 bg-gradient-to-r from-slate-900 to-blue-950 text-white rounded-2xl mx-1.5 mt-1.5 mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
